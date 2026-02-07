@@ -13,19 +13,44 @@ export interface LegalData {
   whatToDo: string[];
 }
 
-// Extract field by trying multiple label variants (handles mojibake)
+// Simple field extraction: find "Label: Value" where value goes until next known label or end
 function extractField(text: string, ...labels: string[]): string | null {
+  // All possible next-field labels to stop at
+  const stopLabels = [
+    "Polo Ativo", "Polo Passivo", "Classe Judicial", "Classe judicial",
+    "Órgão", "Orgão", "ÃrgÃ£o", "Ãrg", "Data de Autuação", "Data de AutuaÃ§Ã£o",
+    "Assunto", "Data -", "Data - Movimento", "Caso n", "ATENÇÃO", "ATENÃÃO",
+    "Número do Processo", "NÃºmero do Processo",
+    "Prezado", "Informamos"
+  ];
+
   for (const label of labels) {
-    // Match label: value until next known field or end of line
-    const regex = new RegExp(label + ":\\s*(.+?)(?=\\s*(?:Polo |Classe |Data de |Data - |Caso n|ATEN|Ãrg|Órg|Orgão|$))", "i");
+    // Build a stop pattern from all labels except the current one
+    const otherLabels = stopLabels
+      .filter(l => l.toLowerCase() !== label.toLowerCase())
+      .map(l => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join("|");
+
+    const regex = new RegExp(
+      label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + 
+      "[:\\s]+(.+?)(?=\\s*(?:" + otherLabels + ")[:\\s]|$)",
+      "is"
+    );
     const match = text.match(regex);
-    if (match && match[1].trim()) return match[1].trim();
+    if (match && match[1].trim()) {
+      // Clean up the value
+      let val = match[1].trim();
+      // Remove trailing "Diário." or similar noise
+      val = val.replace(/\s*DiÃ¡rio\.?\s*$/, "").replace(/\s*Diário\.?\s*$/, "").trim();
+      if (val.length > 0 && val.length < 500) return val;
+    }
   }
   return null;
 }
 
 const DECISION_KEYWORDS: { pattern: RegExp; label: string; severity: "high" | "medium" | "low" }[] = [
   { pattern: /sent[eê]n[cç]a/i, label: "Sentença Proferida", severity: "high" },
+  { pattern: /SentenÃ§a/i, label: "Sentença Proferida", severity: "high" },
   { pattern: /tutela.*urg[eê]ncia.*concedida/i, label: "Tutela de Urgência Concedida", severity: "high" },
   { pattern: /tutela.*urg[eê]ncia.*indeferida/i, label: "Tutela de Urgência Indeferida", severity: "high" },
   { pattern: /tutela.*urg[eê]ncia/i, label: "Tutela de Urgência", severity: "high" },
@@ -33,12 +58,19 @@ const DECISION_KEYWORDS: { pattern: RegExp; label: string; severity: "high" | "m
   { pattern: /liminar.*indeferida/i, label: "Liminar Indeferida", severity: "high" },
   { pattern: /julgamento.*antecipado/i, label: "Julgamento Antecipado", severity: "high" },
   { pattern: /ac[oó]rd[aã]o/i, label: "Acórdão", severity: "high" },
+  { pattern: /AcÃ³rdÃ£o/i, label: "Acórdão", severity: "high" },
   { pattern: /decis[aã]o.*interlocut/i, label: "Decisão Interlocutória", severity: "high" },
-  { pattern: /expedi[cç][aã]o.*intima[cç][aã]o/i, label: "Expedição de Intimação", severity: "medium" },
-  { pattern: /intima[cç][aã]o/i, label: "Intimação", severity: "medium" },
-  { pattern: /cita[cç][aã]o/i, label: "Citação", severity: "medium" },
+  { pattern: /DecisÃ£o/i, label: "Decisão Interlocutória", severity: "high" },
+  { pattern: /Proferido despacho de mero expediente/i, label: "Despacho de Mero Expediente", severity: "low" },
   { pattern: /despacho.*mero.*expediente/i, label: "Despacho de Mero Expediente", severity: "low" },
+  { pattern: /ExpediÃ§Ã£o de IntimaÃ§Ã£o/i, label: "Expedição de Intimação", severity: "medium" },
+  { pattern: /expedi[cç][aã]o.*intima[cç][aã]o/i, label: "Expedição de Intimação", severity: "medium" },
+  { pattern: /IntimaÃ§Ã£o/i, label: "Intimação", severity: "medium" },
+  { pattern: /intima[cç][aã]o/i, label: "Intimação", severity: "medium" },
+  { pattern: /CitaÃ§Ã£o/i, label: "Citação", severity: "medium" },
+  { pattern: /cita[cç][aã]o/i, label: "Citação", severity: "medium" },
   { pattern: /despacho/i, label: "Despacho", severity: "medium" },
+  { pattern: /AudiÃªncia/i, label: "Audiência", severity: "high" },
   { pattern: /audi[eê]ncia.*designada/i, label: "Audiência Designada", severity: "high" },
   { pattern: /audi[eê]ncia/i, label: "Audiência", severity: "high" },
   { pattern: /mandado/i, label: "Mandado Expedido", severity: "medium" },
@@ -48,18 +80,6 @@ const DECISION_KEYWORDS: { pattern: RegExp; label: string; severity: "high" | "m
   { pattern: /tr[aâ]nsito.*julgado/i, label: "Trânsito em Julgado", severity: "high" },
   { pattern: /cumprimento.*sent/i, label: "Cumprimento de Sentença", severity: "high" },
   { pattern: /arquivamento/i, label: "Arquivamento", severity: "medium" },
-];
-
-// Also handle mojibake variants
-const DECISION_KEYWORDS_MOJIBAKE: { pattern: RegExp; label: string }[] = [
-  { pattern: /Proferido despacho de mero expediente/i, label: "Despacho de Mero Expediente" },
-  { pattern: /ExpediÃ§Ã£o de IntimaÃ§Ã£o/i, label: "Expedição de Intimação" },
-  { pattern: /IntimaÃ§Ã£o/i, label: "Intimação" },
-  { pattern: /SentenÃ§a/i, label: "Sentença Proferida" },
-  { pattern: /CitaÃ§Ã£o/i, label: "Citação" },
-  { pattern: /AudiÃªncia/i, label: "Audiência" },
-  { pattern: /DecisÃ£o/i, label: "Decisão Interlocutória" },
-  { pattern: /AcÃ³rdÃ£o/i, label: "Acórdão" },
 ];
 
 const ACTION_MAP: Record<string, string[]> = {
@@ -86,17 +106,22 @@ const ACTION_MAP: Record<string, string[]> = {
 export function extractLegalData(bodyText: string | null | undefined, summaryFull: string | null | undefined): LegalData {
   const text = [bodyText, summaryFull].filter(Boolean).join("\n\n");
   
-  // Extract parties - these labels are ASCII so they work with any encoding
+  // Extract parties
   const poloAtivo = extractField(text, "Polo Ativo");
   const poloPassivo = extractField(text, "Polo Passivo");
-  const classeJudicial = extractField(text, "Classe Judicial");
+  const classeJudicial = extractField(text, "Classe Judicial", "Classe judicial");
   const orgao = extractField(text, "Órgão", "Orgão", "ÃrgÃ£o");
   const assunto = extractField(text, "Assunto");
   const dataAutuacao = extractField(text, "Data de Autuação", "Data de AutuaÃ§Ã£o");
 
+  // Also try to extract from summary_full which is clean text
+  const poloAtivoClean = poloAtivo || extractFromSummary(summaryFull, /(?:autor|polo ativo|agravante)[^:]*?(?:é|:)\s*([^,.]+)/i);
+  const poloPassivoClean = poloPassivo || extractFromSummary(summaryFull, /(?:réu|polo passivo|agravado)[^:]*?(?:é|:)\s*([^,.]+)/i);
+  const classeClean = classeJudicial || extractFromSummary(summaryFull, /(?:classificad[oa]|classe)[^:]*?(?:como|:)\s*([^,.]+)/i);
+
   // Extract movements: "DD/MM/YYYY HH:MM - Description"
   const movimentos: { date: string; description: string }[] = [];
-  const movRegex = /(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})\s*-\s*(.+?)(?=\s*Caso|ATEN|\d{2}\/\d{2}\/\d{4}|$)/gi;
+  const movRegex = /(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})\s*-\s*(.+?)(?=\s*(?:Caso|ATEN|Diário|\d{2}\/\d{2}\/\d{4}|$))/gi;
   let match;
   while ((match = movRegex.exec(text)) !== null) {
     movimentos.push({ date: match[1].trim(), description: match[2].trim() });
@@ -108,8 +133,7 @@ export function extractLegalData(bodyText: string | null | undefined, summaryFul
   
   const searchText = movimentos.map(m => m.description).join(" ") + " " + text;
   
-  // Try mojibake patterns first (more specific)
-  for (const kw of DECISION_KEYWORDS_MOJIBAKE) {
+  for (const kw of DECISION_KEYWORDS) {
     if (kw.pattern.test(searchText)) {
       decisionType = kw.label;
       const relevantMov = movimentos.find(m => kw.pattern.test(m.description));
@@ -117,26 +141,14 @@ export function extractLegalData(bodyText: string | null | undefined, summaryFul
       break;
     }
   }
-  
-  // Fallback to clean patterns
-  if (!decisionType) {
-    for (const kw of DECISION_KEYWORDS) {
-      if (kw.pattern.test(searchText)) {
-        decisionType = kw.label;
-        const relevantMov = movimentos.find(m => kw.pattern.test(m.description));
-        whatWasDone = relevantMov ? `${relevantMov.date} — ${relevantMov.description}` : kw.label;
-        break;
-      }
-    }
-  }
 
   // Determine what to do
   const whatToDo = decisionType ? (ACTION_MAP[decisionType] || ["Verificar detalhes no sistema processual"]) : [];
 
   return {
-    poloAtivo,
-    poloPassivo,
-    classeJudicial,
+    poloAtivo: poloAtivoClean,
+    poloPassivo: poloPassivoClean,
+    classeJudicial: classeClean,
     orgao,
     assunto,
     dataAutuacao,
@@ -145,4 +157,14 @@ export function extractLegalData(bodyText: string | null | undefined, summaryFul
     whatWasDone,
     whatToDo,
   };
+}
+
+function extractFromSummary(summary: string | null | undefined, regex: RegExp): string | null {
+  if (!summary) return null;
+  const match = summary.match(regex);
+  if (match && match[1]) {
+    const val = match[1].trim();
+    if (val.length > 2 && val.length < 200) return val;
+  }
+  return null;
 }
