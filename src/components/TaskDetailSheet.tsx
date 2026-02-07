@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Task, getDeadlineStatus, formatDeadline, getDaysRemaining } from "@/lib/tasks";
 import { StatusBadge } from "./StatusBadge";
+import { TaskLabelPicker } from "./TaskLabelPicker";
+import { useLabels } from "@/hooks/useLabels";
 import { cn } from "@/lib/utils";
 import {
   Calendar, Flag, Scale, User, FileText, Clock, Check,
@@ -60,6 +62,7 @@ function SectionHeader({ title, icon: Icon }: { title: string; icon: typeof Cale
 }
 
 export function TaskDetailSheet({ task, open, onOpenChange, onToggle, onDelete }: TaskDetailSheetProps) {
+  const { labels } = useLabels();
   if (!task) return null;
 
   const deadlineStatus = getDeadlineStatus(task.deadline);
@@ -175,7 +178,10 @@ export function TaskDetailSheet({ task, open, onOpenChange, onToggle, onDelete }
 
         <Separator />
 
-        {/* Ações */}
+        {/* Etiquetas */}
+        <TaskLabelPicker taskId={task.id} allLabels={labels} />
+
+        <Separator />
         <div className="py-4 space-y-2">
           <SectionHeader title="Ações" icon={Zap} />
           <div className="flex gap-2">
