@@ -62,7 +62,7 @@ function SectionHeader({ title, icon: Icon }: { title: string; icon: typeof Cale
 }
 
 export function TaskDetailSheet({ task, open, onOpenChange, onToggle, onDelete }: TaskDetailSheetProps) {
-  const { labels } = useLabels();
+  const { labels, refetch: refetchLabels } = useLabels();
   if (!task) return null;
 
   const deadlineStatus = getDeadlineStatus(task.deadline);
@@ -179,7 +179,7 @@ export function TaskDetailSheet({ task, open, onOpenChange, onToggle, onDelete }
         <Separator />
 
         {/* Etiquetas */}
-        <TaskLabelPicker taskId={task.id} allLabels={labels} />
+        <TaskLabelPicker taskId={task.id} allLabels={labels} onLabelsChanged={refetchLabels} />
 
         <Separator />
         <div className="py-4 space-y-2">

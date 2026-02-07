@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Label as LabelType } from "@/hooks/useLabels";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { Tag, Plus, X, Check } from "lucide-react";
 import {
   Popover,
@@ -9,17 +10,29 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+
+const COLORS = [
+  "#ef4444", "#f97316", "#eab308", "#22c55e",
+  "#06b6d4", "#3b82f6", "#6366f1", "#a855f7",
+  "#ec4899", "#64748b",
+];
 
 interface TaskLabelPickerProps {
   taskId: string;
   allLabels: LabelType[];
+  onLabelsChanged?: () => void;
 }
 
-export function TaskLabelPicker({ taskId, allLabels }: TaskLabelPickerProps) {
+export function TaskLabelPicker({ taskId, allLabels, onLabelsChanged }: TaskLabelPickerProps) {
+  const { user } = useAuth();
   const [assignedIds, setAssignedIds] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState(COLORS[0]);
+  const [creating, setCreating] = useState(false);
 
   const fetchAssigned = useCallback(async () => {
     const { data } = await supabase
@@ -54,6 +67,25 @@ export function TaskLabelPicker({ taskId, allLabels }: TaskLabelPickerProps) {
     }
   };
 
+  const handleCreate = async () => {
+    if (!newName.trim() || !user) return;
+    setCreating(true);
+    const { data } = await supabase
+      .from("labels")
+      .insert({ user_id: user.id, name: newName.trim(), color: newColor })
+      .select("id")
+      .single();
+    if (data) {
+      // Auto-assign to this task
+      await supabase.from("task_labels").insert({ task_id: taskId, label_id: data.id });
+      setAssignedIds((prev) => new Set(prev).add(data.id));
+      onLabelsChanged?.();
+    }
+    setNewName("");
+    setNewColor(COLORS[0]);
+    setCreating(false);
+  };
+
   const assignedLabels = allLabels.filter((l) => assignedIds.has(l.id));
 
   if (loading) return null;
@@ -71,12 +103,10 @@ export function TaskLabelPicker({ taskId, allLabels }: TaskLabelPickerProps) {
               <Plus className="h-4 w-4" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-56 p-2" align="end">
+          <PopoverContent className="w-64 p-2" align="end">
             <p className="text-xs font-medium text-muted-foreground mb-2 px-1">Selecionar etiquetas</p>
-            {allLabels.length === 0 ? (
-              <p className="text-xs text-muted-foreground px-1 py-2">Nenhuma etiqueta criada ainda.</p>
-            ) : (
-              <div className="space-y-1 max-h-48 overflow-y-auto">
+            {allLabels.length > 0 && (
+              <div className="space-y-1 max-h-36 overflow-y-auto mb-2">
                 {allLabels.map((label) => {
                   const isAssigned = assignedIds.has(label.id);
                   return (
@@ -99,6 +129,35 @@ export function TaskLabelPicker({ taskId, allLabels }: TaskLabelPickerProps) {
                 })}
               </div>
             )}
+
+            <Separator className="my-2" />
+            <p className="text-xs font-medium text-muted-foreground mb-2 px-1">Criar nova etiqueta</p>
+            <div className="space-y-2 px-1">
+              <Input
+                placeholder="Nome da etiqueta"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                className="h-8 text-sm"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setNewColor(c)}
+                    className="h-5 w-5 rounded-full border-2 transition-transform"
+                    style={{
+                      backgroundColor: c,
+                      borderColor: newColor === c ? "var(--foreground)" : "transparent",
+                      transform: newColor === c ? "scale(1.2)" : "scale(1)",
+                    }}
+                  />
+                ))}
+              </div>
+              <Button size="sm" onClick={handleCreate} disabled={!newName.trim() || creating} className="w-full h-7 text-xs">
+                <Plus className="h-3 w-3 mr-1" /> Criar e atribuir
+              </Button>
+            </div>
           </PopoverContent>
         </Popover>
       </div>
