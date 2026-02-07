@@ -1,8 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTasks } from "@/hooks/useTasks";
 import { useLabels } from "@/hooks/useLabels";
+import { useProcesses } from "@/hooks/useProcesses";
+import { useGmail } from "@/hooks/useGmail";
 import { getDeadlineStatus } from "@/lib/tasks";
 import { StatsCards } from "@/components/StatsCards";
 import { TaskCard } from "@/components/TaskCard";
@@ -10,11 +12,13 @@ import { AddTaskDialog } from "@/components/AddTaskDialog";
 import { TaskFilters, FilterType } from "@/components/TaskFilters";
 import { DeadlineRadar } from "@/components/DeadlineRadar";
 import { DailyPanel } from "@/components/DailyPanel";
-import { SearchBar } from "@/components/SearchBar";
 import { LabelManager } from "@/components/LabelManager";
 import { TaskTimeline } from "@/components/TaskTimeline";
 import { DomainTabs, DomainFilter } from "@/components/DomainTabs";
 import { SmartAlertsPanel } from "@/components/SmartAlertsPanel";
+import { AuditButton } from "@/components/AuditButton";
+import { WeekSimulation } from "@/components/WeekSimulation";
+import { PowerSearch } from "@/components/PowerSearch";
 import { Target, LogOut, Mail, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -22,8 +26,9 @@ const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const { tasks, loading: tasksLoading, addTask, toggleComplete, deleteTask } = useTasks();
   const { labels, addLabel, deleteLabel } = useLabels();
+  const { processes } = useProcesses();
+  const { emails } = useGmail();
   const [filter, setFilter] = useState<FilterType>("all");
-  const [search, setSearch] = useState("");
   const [domain, setDomain] = useState<DomainFilter>("all");
 
   const domainCounts = useMemo(() => {
@@ -38,38 +43,14 @@ const Index = () => {
 
   const filteredTasks = useMemo(() => {
     let result = [...tasks];
+    if (domain !== "all") result = result.filter((t) => t.domain === domain);
 
-    // Domain filter
-    if (domain !== "all") {
-      result = result.filter((t) => t.domain === domain);
-    }
-
-    // Search filter
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          t.description.toLowerCase().includes(q)
-      );
-    }
-
-    // Status filter
     switch (filter) {
-      case "pending":
-        result = result.filter((t) => t.status === "pending");
-        break;
-      case "overdue":
-        result = result.filter(
-          (t) => t.status === "pending" && getDeadlineStatus(t.deadline) === "overdue"
-        );
-        break;
-      case "completed":
-        result = result.filter((t) => t.status === "completed");
-        break;
+      case "pending": result = result.filter((t) => t.status === "pending"); break;
+      case "overdue": result = result.filter((t) => t.status === "pending" && getDeadlineStatus(t.deadline) === "overdue"); break;
+      case "completed": result = result.filter((t) => t.status === "completed"); break;
     }
 
-    // Sort: pending first by deadline, completed last
     result.sort((a, b) => {
       if (a.status === "completed" && b.status !== "completed") return 1;
       if (a.status !== "completed" && b.status === "completed") return -1;
@@ -77,23 +58,35 @@ const Index = () => {
     });
 
     return result;
-  }, [tasks, filter, search, domain]);
+  }, [tasks, filter, domain]);
+
+  // Map emails for PowerSearch
+  const emailsForSearch = useMemo(() =>
+    emails.map((e: any) => ({
+      id: e.id,
+      subject: e.subject,
+      sender: e.sender,
+      snippet: e.snippet,
+      ai_summary: e.ai_summary,
+      domain: e.domain || "pessoal",
+      category: e.category,
+      extracted_deadline: e.extracted_deadline,
+      extracted_value: e.extracted_value,
+      received_at: e.received_at,
+    })),
+  [emails]);
 
   if (authLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Carregando...</div>
-      </div>
-    );
+    return <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-pulse text-muted-foreground">Carregando...</div></div>;
   }
 
   if (!user) return <Navigate to="/auth" replace />;
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-4xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
               <Target className="h-5 w-5 text-primary-foreground" />
@@ -104,21 +97,16 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Link to="/processes">
-              <Button variant="outline" size="icon" title="Processos">
-                <FolderOpen className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link to="/emails">
-              <Button variant="outline" size="icon" title="Emails">
-                <Mail className="h-4 w-4" />
-              </Button>
-            </Link>
+            <Link to="/processes"><Button variant="outline" size="icon" title="Processos"><FolderOpen className="h-4 w-4" /></Button></Link>
+            <Link to="/emails"><Button variant="outline" size="icon" title="Emails"><Mail className="h-4 w-4" /></Button></Link>
             <AddTaskDialog onAdd={addTask} />
-            <Button variant="ghost" size="icon" onClick={signOut} title="Sair">
-              <LogOut className="h-4 w-4" />
-            </Button>
+            <Button variant="ghost" size="icon" onClick={signOut} title="Sair"><LogOut className="h-4 w-4" /></Button>
           </div>
+        </div>
+
+        {/* Power Search */}
+        <div className="mb-6">
+          <PowerSearch tasks={tasks} emails={emailsForSearch} processes={processes} />
         </div>
 
         {/* Domain Tabs */}
@@ -133,12 +121,10 @@ const Index = () => {
           <DailyPanel tasks={tasks} onToggle={toggleComplete} />
         </div>
 
-        {/* Sidebar widgets */}
+        {/* Main grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
           <div className="md:col-span-2">
-            {/* Search + Filters + Tasks */}
             <div className="space-y-4">
-              <SearchBar value={search} onChange={setSearch} />
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-foreground">Tarefas</h2>
                 <TaskFilters active={filter} onChange={setFilter} />
@@ -153,32 +139,27 @@ const Index = () => {
                         <Target className="h-8 w-8 text-muted-foreground" />
                       </div>
                       <p className="text-lg font-medium text-foreground mb-1">
-                        {filter === "all" && !search
-                          ? "Nenhuma tarefa ainda"
-                          : "Nenhuma tarefa encontrada"}
+                        {filter === "all" ? "Nenhuma tarefa ainda" : "Nenhuma tarefa encontrada"}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {filter === "all" && !search
-                          ? "Crie sua primeira tarefa para começar!"
-                          : "Tente outro filtro ou busca."}
+                        {filter === "all" ? "Crie sua primeira tarefa para começar!" : "Tente outro filtro."}
                       </p>
                     </div>
                   ) : (
                     filteredTasks.map((task) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        onToggle={toggleComplete}
-                        onDelete={deleteTask}
-                      />
+                      <TaskCard key={task.id} task={task} onToggle={toggleComplete} onDelete={deleteTask} />
                     ))
                   )}
                 </div>
               )}
             </div>
           </div>
+
+          {/* Sidebar */}
           <div className="space-y-4">
             <SmartAlertsPanel />
+            <AuditButton />
+            <WeekSimulation />
             <LabelManager labels={labels} onAdd={addLabel} onDelete={deleteLabel} />
             <TaskTimeline tasks={tasks} />
           </div>

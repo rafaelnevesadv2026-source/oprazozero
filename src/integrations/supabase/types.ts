@@ -65,11 +65,17 @@ export type Database = {
           extracted_value: number | null
           gmail_id: string
           id: string
+          is_informational: boolean | null
           process_id: string | null
           received_at: string | null
+          requires_action: boolean | null
+          requires_response: boolean | null
           sender: string | null
           snippet: string | null
           subject: string | null
+          summary_full: string | null
+          summary_medium: string | null
+          summary_short: string | null
           task_created: boolean | null
           user_id: string
         }
@@ -84,11 +90,17 @@ export type Database = {
           extracted_value?: number | null
           gmail_id: string
           id?: string
+          is_informational?: boolean | null
           process_id?: string | null
           received_at?: string | null
+          requires_action?: boolean | null
+          requires_response?: boolean | null
           sender?: string | null
           snippet?: string | null
           subject?: string | null
+          summary_full?: string | null
+          summary_medium?: string | null
+          summary_short?: string | null
           task_created?: boolean | null
           user_id: string
         }
@@ -103,11 +115,17 @@ export type Database = {
           extracted_value?: number | null
           gmail_id?: string
           id?: string
+          is_informational?: boolean | null
           process_id?: string | null
           received_at?: string | null
+          requires_action?: boolean | null
+          requires_response?: boolean | null
           sender?: string | null
           snippet?: string | null
           subject?: string | null
+          summary_full?: string | null
+          summary_medium?: string | null
+          summary_short?: string | null
           task_created?: boolean | null
           user_id?: string
         }
