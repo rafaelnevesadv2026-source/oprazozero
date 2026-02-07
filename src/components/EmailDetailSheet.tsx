@@ -1,15 +1,17 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
   Mail, Calendar, DollarSign, Scale, User, FileText, Clock,
   AlertTriangle, CheckCircle, Building2, Hash, Gavel, Users,
   ArrowRight, Copy, Zap, Info, Shield, TrendingUp,
   CircleDot, ChevronRight, ExternalLink, Flag, Tag, RefreshCw,
-  Trash2, CheckCheck, Archive
+  Trash2, CheckCheck, Archive, Plus
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -126,15 +128,68 @@ function extractDocuments(text: string): string[] {
 }
 
 function EmailLabelManager({ emailId }: { emailId: string }) {
-  const { labels } = useLabels();
+  const { labels, addLabel, refetch: refetchLabels } = useLabels();
   const { labelIds, toggleLabel, loading } = useEmailLabels(emailId);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState("#ef4444");
+  const [createOpen, setCreateOpen] = useState(false);
 
-  if (labels.length === 0) return null;
+  const COLORS = [
+    "#ef4444", "#f97316", "#eab308", "#22c55e",
+    "#06b6d4", "#3b82f6", "#6366f1", "#a855f7",
+    "#ec4899", "#64748b",
+  ];
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    await addLabel(newName.trim(), newColor);
+    setNewName("");
+    setNewColor("#ef4444");
+    setCreateOpen(false);
+  };
 
   return (
     <div>
-      <SectionHeader title="Etiquetas" icon={Tag} />
+      <div className="flex items-center justify-between">
+        <SectionHeader title="Etiquetas" icon={Tag} />
+        <Popover open={createOpen} onOpenChange={setCreateOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7">
+              <Plus className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 space-y-3" align="end">
+            <Input
+              placeholder="Nome da etiqueta"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              className="h-8 text-sm"
+            />
+            <div className="flex flex-wrap gap-2">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setNewColor(c)}
+                  className="h-5 w-5 rounded-full border-2 transition-transform"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: newColor === c ? "var(--foreground)" : "transparent",
+                    transform: newColor === c ? "scale(1.2)" : "scale(1)",
+                  }}
+                />
+              ))}
+            </div>
+            <Button size="sm" onClick={handleCreate} className="w-full h-8 text-xs">
+              Criar etiqueta
+            </Button>
+          </PopoverContent>
+        </Popover>
+      </div>
       <div className="flex flex-wrap gap-1.5 mt-1">
+        {labels.length === 0 && (
+          <p className="text-xs text-muted-foreground">Nenhuma etiqueta. Clique em + para criar.</p>
+        )}
         {labels.map((label) => {
           const isActive = labelIds.includes(label.id);
           return (
