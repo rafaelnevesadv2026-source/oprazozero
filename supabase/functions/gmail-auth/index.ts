@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       }
 
       const redirectUri = `${SUPABASE_URL}/functions/v1/gmail-auth?action=callback`;
-      const scope = "https://www.googleapis.com/auth/gmail.readonly";
+      const scope = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email";
       const authUrl =
         `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
@@ -98,9 +98,43 @@ Deno.serve(async (req) => {
 
       const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
-      // Store tokens in database using service role
+      // Get user email from Google
+      let userEmail = "unknown";
+      try {
+        const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        });
+        if (userInfoRes.ok) {
+          const userInfo = await userInfoRes.json();
+          userEmail = userInfo.email || "unknown";
+        }
+      } catch (e) {
+        console.error("Failed to get user email:", e);
+      }
+
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      const { error: upsertError } = await supabase.from("gmail_tokens").upsert(
+
+      // Store in email_accounts table (supports multiple accounts)
+      const { error: upsertError } = await supabase.from("email_accounts").upsert(
+        {
+          user_id: userId,
+          email: userEmail,
+          provider: "gmail",
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
+          expires_at: expiresAt,
+          status: "active",
+        },
+        { onConflict: "user_id,email" }
+      );
+
+      if (upsertError) {
+        console.error("Upsert error:", upsertError);
+        return new Response(`Database error: ${upsertError.message}`, { status: 500 });
+      }
+
+      // Also keep backward compatibility with gmail_tokens
+      await supabase.from("gmail_tokens").upsert(
         {
           user_id: userId,
           access_token: tokenData.access_token,
@@ -109,11 +143,6 @@ Deno.serve(async (req) => {
         },
         { onConflict: "user_id" }
       );
-
-      if (upsertError) {
-        console.error("Upsert error:", upsertError);
-        return new Response(`Database error: ${upsertError.message}`, { status: 500 });
-      }
 
       // Redirect user back to the app
       const appUrl = req.headers.get("origin") || "https://oprazozero.lovable.app";
@@ -127,7 +156,7 @@ Deno.serve(async (req) => {
     if (action === "status") {
       const authHeader = req.headers.get("Authorization");
       if (!authHeader) {
-        return new Response(JSON.stringify({ connected: false }), {
+        return new Response(JSON.stringify({ connected: false, accounts: [] }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -136,18 +165,60 @@ Deno.serve(async (req) => {
       const token = authHeader.replace("Bearer ", "");
       const { data: { user } } = await supabase.auth.getUser(token);
       if (!user) {
-        return new Response(JSON.stringify({ connected: false }), {
+        return new Response(JSON.stringify({ connected: false, accounts: [] }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const { data } = await supabase
+      const { data: accounts } = await supabase
+        .from("email_accounts")
+        .select("id, email, provider, status, created_at")
+        .eq("user_id", user.id)
+        .eq("status", "active");
+
+      // Backward compatibility: check gmail_tokens too
+      const { data: legacyToken } = await supabase
         .from("gmail_tokens")
-        .select("id, expires_at")
+        .select("id")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      return new Response(JSON.stringify({ connected: !!data }), {
+      const connected = (accounts && accounts.length > 0) || !!legacyToken;
+
+      return new Response(JSON.stringify({ connected, accounts: accounts || [] }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Step 4: Disconnect an account
+    if (action === "disconnect") {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      if (!user) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let body: any = {};
+      try { body = await req.json(); } catch {}
+      const accountId = body.account_id;
+
+      if (accountId) {
+        await supabase.from("email_accounts").delete().eq("id", accountId).eq("user_id", user.id);
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

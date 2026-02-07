@@ -38,6 +38,21 @@ export function useTasks() {
     fetchTasks();
   }, [fetchTasks]);
 
+  // Realtime subscription for tasks (auto-created from emails)
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel("tasks_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tasks", filter: `user_id=eq.${user.id}` },
+        () => { fetchTasks(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user, fetchTasks]);
+
   const addTask = useCallback(
     async (data: { title: string; description: string; deadline: string; priority: TaskPriority }) => {
       if (!user) return;
