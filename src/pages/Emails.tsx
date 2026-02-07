@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useGmail, GmailEmail } from "@/hooks/useGmail";
@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import {
   ArrowLeft, Mail, RefreshCw, Link as LinkIcon, Calendar, DollarSign,
   Plus, Trash2, CheckCircle, Scale, User, AlertTriangle, ArrowRight,
-  Clock, Info, Target
+  Clock, Info, Target, Sparkles
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -146,13 +146,53 @@ function AccountCard({ account, onDisconnect }: { account: EmailAccount; onDisco
 }
 
 const Emails = () => {
-  const { user, loading: authLoading } = useAuth();
-  const { connected, accounts, emails, loading, syncing, connectGmail, disconnectAccount, syncEmails } = useGmail();
+  const { user, session, loading: authLoading } = useAuth();
+  const { connected, accounts, emails, loading, syncing, connectGmail, disconnectAccount, syncEmails, refetch } = useGmail();
   const [selectedEmail, setSelectedEmail] = useState<GmailEmail | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState<EmailCategoryFilter>("all");
   const [domainFilter, setDomainFilter] = useState<EmailDomainFilter>("all");
   const [statusFilter, setStatusFilter] = useState<EmailStatusFilter>("all");
+  const [reanalyzingAll, setReanalyzingAll] = useState(false);
+  const [reanalyzeProgress, setReanalyzeProgress] = useState("");
+
+  const handleReanalyzeAll = useCallback(async () => {
+    if (!session) return;
+    setReanalyzingAll(true);
+    let totalProcessed = 0;
+    try {
+      let hasMore = true;
+      while (hasMore) {
+        setReanalyzeProgress(`Analisando... ${totalProcessed} emails processados`);
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reanalyze-emails`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ batchSize: 20 }),
+          }
+        );
+        const json = await res.json();
+        if (!json.success || json.processed === 0) {
+          hasMore = false;
+        } else {
+          totalProcessed += json.processed;
+          if ((json.remaining || 0) === 0) hasMore = false;
+        }
+        await refetch();
+      }
+      toast({ title: "Re-análise completa!", description: `${totalProcessed} email(s) re-analisados com IA avançada.` });
+    } catch {
+      toast({ title: "Erro na re-análise", variant: "destructive" });
+    } finally {
+      setReanalyzingAll(false);
+      setReanalyzeProgress("");
+    }
+  }, [session, refetch]);
 
   // Compute filter counts
   const filterCounts = useMemo(() => ({
@@ -228,10 +268,16 @@ const Emails = () => {
           </div>
           <div className="flex items-center gap-2">
             {connected && (
-              <Button onClick={syncEmails} disabled={syncing} variant="outline" size="sm" className="gap-2">
-                <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
-                {syncing ? "Sincronizando..." : "Sincronizar"}
-              </Button>
+              <>
+                <Button onClick={handleReanalyzeAll} disabled={reanalyzingAll || syncing} variant="outline" size="sm" className="gap-2">
+                  <Sparkles className={cn("h-4 w-4", reanalyzingAll && "animate-spin")} />
+                  {reanalyzingAll ? reanalyzeProgress || "Analisando..." : "Re-analisar IA"}
+                </Button>
+                <Button onClick={syncEmails} disabled={syncing || reanalyzingAll} variant="outline" size="sm" className="gap-2">
+                  <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
+                  {syncing ? "Sincronizando..." : "Sincronizar"}
+                </Button>
+              </>
             )}
           </div>
         </div>

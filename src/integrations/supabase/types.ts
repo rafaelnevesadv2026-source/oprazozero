@@ -53,6 +53,39 @@ export type Database = {
         }
         Relationships: []
       }
+      email_labels: {
+        Row: {
+          created_at: string
+          email_id: string
+          label_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_id: string
+          label_id: string
+        }
+        Update: {
+          created_at?: string
+          email_id?: string
+          label_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_labels_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "gmail_emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_labels_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "labels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gmail_emails: {
         Row: {
           account_email: string | null
