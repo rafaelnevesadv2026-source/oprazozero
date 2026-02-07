@@ -628,7 +628,7 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail, onU
               <p className="text-[10px] text-muted-foreground mb-2">
                 Conteúdo preservado sem modificação. Todo dado resumido é rastreável até este conteúdo.
               </p>
-              <div className="rounded-lg border bg-muted/30 p-4 mt-1 max-h-[60vh] overflow-y-auto">
+              <div className="rounded-lg border bg-muted/30 p-4 mt-1">
                 <div className="space-y-3">
                   <div>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Assunto</p>
