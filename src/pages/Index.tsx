@@ -174,7 +174,7 @@ const Index = () => {
         {/* Radar + Daily Panel */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
           <DeadlineRadar tasks={tasks} />
-          <DailyPanel tasks={tasks} onToggle={toggleComplete} />
+          <DailyPanel tasks={tasks} onToggle={toggleComplete} onSelectTask={setSelectedTask} />
         </div>
 
         {/* Main grid */}
