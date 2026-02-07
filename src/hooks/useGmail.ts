@@ -118,22 +118,31 @@ export function useGmail() {
     if (!session) return;
     setSyncing(true);
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gmail-sync`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            "Content-Type": "application/json",
-          },
+      let hasMore = true;
+      let totalProcessed = 0;
+      while (hasMore) {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gmail-sync`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        const json = await res.json();
+        if (!json.success) break;
+        totalProcessed += json.processed || 0;
+        hasMore = json.hasMore === true;
+        if (hasMore) {
+          console.log(`Synced batch (${totalProcessed} total), fetching more...`);
+          await fetchEmails();
         }
-      );
-      const json = await res.json();
-      if (json.success) {
-        await fetchEmails();
       }
-      return json;
+      await fetchEmails();
+      return { success: true, processed: totalProcessed };
     } finally {
       setSyncing(false);
     }
