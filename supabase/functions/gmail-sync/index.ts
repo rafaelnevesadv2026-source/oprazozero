@@ -221,14 +221,14 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
     }
   }
 
-  // Fetch emails with pagination, but limit total to avoid timeout
-  const MAX_MESSAGES_PER_RUN = 500;
+  // Fetch emails with pagination - no hard cap
+  const MAX_MESSAGES_PER_RUN = 5000;
   console.log(`Fetching emails for ${account.email} (max ${MAX_MESSAGES_PER_RUN} IDs)...`);
   const allMessages: any[] = [];
   let pageToken: string | null = null;
 
   do {
-    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100${pageToken ? `&pageToken=${pageToken}` : ""}`;
+    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=500${pageToken ? `&pageToken=${pageToken}` : ""}`;
     const listRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 
     if (!listRes.ok) {
@@ -247,12 +247,27 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
 
   console.log(`Total ${allMessages.length} messages fetched for ${account.email}`);
 
-  // Get already imported email IDs
-  const { data: existingEmails } = await supabase
-    .from("gmail_emails")
-    .select("gmail_id")
-    .eq("user_id", userId);
-  const existingIds = new Set((existingEmails || []).map((e: any) => e.gmail_id));
+  // Get already imported email IDs (paginated to avoid 1000 limit)
+  const existingIds = new Set<string>();
+  let from = 0;
+  const PAGE = 1000;
+  let fetching = true;
+  while (fetching) {
+    const { data: existingEmails } = await supabase
+      .from("gmail_emails")
+      .select("gmail_id")
+      .eq("user_id", userId)
+      .range(from, from + PAGE - 1);
+    if (existingEmails && existingEmails.length > 0) {
+      for (const e of existingEmails) existingIds.add(e.gmail_id);
+      from += existingEmails.length;
+      if (existingEmails.length < PAGE) fetching = false;
+    } else {
+      fetching = false;
+    }
+  }
+  console.log(`${existingIds.size} existing emails in DB`);
+
 
   const newEmails = allMessages.filter((m: any) => !existingIds.has(m.id));
   

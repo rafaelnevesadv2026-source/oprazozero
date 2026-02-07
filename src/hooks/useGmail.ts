@@ -63,12 +63,29 @@ export function useGmail() {
 
   const fetchEmails = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase
-      .from("gmail_emails")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("received_at", { ascending: false });
-    if (data) setEmails(data as unknown as GmailEmail[]);
+    const allEmails: GmailEmail[] = [];
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const { data } = await supabase
+        .from("gmail_emails")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("received_at", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
+      
+      if (data && data.length > 0) {
+        allEmails.push(...(data as unknown as GmailEmail[]));
+        from += data.length;
+        if (data.length < PAGE_SIZE) hasMore = false;
+      } else {
+        hasMore = false;
+      }
+    }
+    
+    setEmails(allEmails);
   }, [user]);
 
   useEffect(() => {
