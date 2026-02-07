@@ -8,12 +8,17 @@ import {
   Mail, Calendar, DollarSign, Scale, User, FileText, Clock,
   AlertTriangle, CheckCircle, Building2, Hash, Gavel, Users,
   ArrowRight, Copy, Zap, Info, Shield, TrendingUp,
-  CircleDot, ChevronRight, ExternalLink, Flag
+  CircleDot, ChevronRight, ExternalLink, Flag, Tag, RefreshCw
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "@/hooks/use-toast";
+import { useLabels } from "@/hooks/useLabels";
+import { useEmailLabels } from "@/hooks/useEmailLabels";
 import type { GmailEmail } from "@/hooks/useGmail";
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 interface EmailDetailSheetProps {
   email: GmailEmail | null;
@@ -96,32 +101,64 @@ function TimelineItem({ date, event, status }: { date: string; event: string; st
   );
 }
 
-// Extract process number from text
 function extractProcessNumber(text: string): string | null {
   const match = text.match(/(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})/);
   return match ? match[1] : null;
 }
 
-// Extract monetary values from text
 function extractValues(text: string): string[] {
-  const matches = text.match(/R\$\s*[\d.,]+/g);
-  return matches || [];
+  return text.match(/R\$\s*[\d.,]+/g) || [];
 }
 
-// Extract dates from text
 function extractDates(text: string): string[] {
-  const matches = text.match(/\d{2}\/\d{2}\/\d{4}/g);
-  return matches || [];
+  return text.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
 }
 
-// Extract CPF/CNPJ
 function extractDocuments(text: string): string[] {
   const cpf = text.match(/\d{3}\.\d{3}\.\d{3}-\d{2}/g) || [];
   const cnpj = text.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g) || [];
   return [...cpf, ...cnpj];
 }
 
+function EmailLabelManager({ emailId }: { emailId: string }) {
+  const { labels } = useLabels();
+  const { labelIds, toggleLabel, loading } = useEmailLabels(emailId);
+
+  if (labels.length === 0) return null;
+
+  return (
+    <div>
+      <SectionHeader title="Etiquetas" icon={Tag} />
+      <div className="flex flex-wrap gap-1.5 mt-1">
+        {labels.map((label) => {
+          const isActive = labelIds.includes(label.id);
+          return (
+            <button
+              key={label.id}
+              disabled={loading}
+              onClick={() => toggleLabel(label.id)}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-all",
+                isActive
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:border-primary/40"
+              )}
+            >
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: label.color }} />
+              {label.name}
+              {isActive && <CheckCircle className="h-3 w-3" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheetProps) {
+  const { session } = useAuth();
+  const [reanalyzing, setReanalyzing] = useState(false);
+
   if (!email) return null;
 
   const cat = email.category || "outros";
@@ -136,7 +173,6 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
   const dates = extractDates(fullText);
   const documents = extractDocuments(fullText);
 
-  // Build timeline events
   const timeline: { date: string; event: string; status: "done" | "pending" | "alert" }[] = [];
   if (email.received_at) {
     timeline.push({
@@ -164,10 +200,9 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
     });
   }
 
-  // Determine urgency
   const getUrgencyLevel = () => {
     if (email.extracted_deadline) {
-      const days = Math.ceil((new Date(email.extracted_deadline).getTime() - Date.now()) / (86400000));
+      const days = Math.ceil((new Date(email.extracted_deadline).getTime() - Date.now()) / 86400000);
       if (days < 0) return { label: "VENCIDO", color: "bg-urgent text-urgent-foreground" };
       if (days <= 3) return { label: "URGENTE", color: "bg-warning text-warning-foreground" };
     }
@@ -177,7 +212,6 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
   };
   const urgency = getUrgencyLevel();
 
-  // Build action recommendations
   const actions: string[] = [];
   if (email.requires_action) actions.push("Analisar conteúdo e tomar providências");
   if (email.requires_response) actions.push("Elaborar e enviar resposta");
@@ -185,6 +219,34 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
   if (isFinancial && email.extracted_value) actions.push("Conferir valor e registrar no financeiro");
   if (email.extracted_deadline) actions.push("Verificar prazo e agendar ação");
   if (email.task_created) actions.push("✅ Tarefa já criada automaticamente");
+
+  const handleReanalyze = async () => {
+    if (!session) return;
+    setReanalyzing(true);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reanalyze-emails`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ batchSize: 1 }),
+        }
+      );
+      if (res.ok) {
+        toast({ title: "Re-análise concluída", description: "O email será atualizado em breve." });
+      }
+    } catch {
+      toast({ title: "Erro na re-análise", variant: "destructive" });
+    } finally {
+      setReanalyzing(false);
+    }
+  };
+
+  const summaryIsPoor = !email.summary_full || email.summary_full.length < 200;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -214,7 +276,6 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
             )}
           </div>
 
-          {/* Quick info row */}
           <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
             <span className="truncate">{email.sender}</span>
             {email.received_at && (
@@ -240,13 +301,27 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
             </TabsTrigger>
           </TabsList>
 
-          {/* CAMADA 2 — ANÁLISE DETALHADA */}
+          {/* CAMADA 1 — ANÁLISE */}
           <TabsContent value="analysis" className="p-4 space-y-4 mt-0">
             {/* Resumo Executivo */}
             <div>
-              <SectionHeader title="Resumo Executivo" icon={FileText} />
+              <div className="flex items-center justify-between">
+                <SectionHeader title="Resumo Executivo" icon={FileText} />
+                {summaryIsPoor && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-[10px] h-7"
+                    onClick={handleReanalyze}
+                    disabled={reanalyzing}
+                  >
+                    <RefreshCw className={cn("h-3 w-3", reanalyzing && "animate-spin")} />
+                    {reanalyzing ? "Analisando..." : "Re-analisar com IA"}
+                  </Button>
+                )}
+              </div>
               <div className="rounded-lg border bg-muted/30 p-3 mt-1">
-                <p className="text-sm text-foreground leading-relaxed">
+                <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">
                   {email.summary_full || email.summary_medium || email.ai_summary || email.snippet || "Sem resumo disponível."}
                 </p>
               </div>
@@ -259,34 +334,36 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
 
             <Separator />
 
+            {/* Etiquetas */}
+            <EmailLabelManager emailId={email.id} />
+
+            <Separator />
+
             {/* Análise Inteligente */}
             <div>
               <SectionHeader title="Análise Inteligente" icon={TrendingUp} />
-              <div className="space-y-2 mt-1">
-                {/* Risk/Impact indicators */}
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-lg border p-2 text-center">
-                    <p className="text-[10px] text-muted-foreground">Urgência</p>
-                    <p className={cn("text-xs font-bold mt-0.5",
-                      email.requires_action ? "text-urgent" : email.requires_response ? "text-warning" : "text-success"
-                    )}>
-                      {email.requires_action ? "Alta" : email.requires_response ? "Média" : "Baixa"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border p-2 text-center">
-                    <p className="text-[10px] text-muted-foreground">Impacto</p>
-                    <p className={cn("text-xs font-bold mt-0.5",
-                      isLegal || isFinancial ? "text-warning" : "text-muted-foreground"
-                    )}>
-                      {isLegal ? "Jurídico" : isFinancial ? "Financeiro" : "Informativo"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border p-2 text-center">
-                    <p className="text-[10px] text-muted-foreground">Classificação</p>
-                    <p className="text-xs font-bold mt-0.5 text-foreground">
-                      {email.is_informational ? "Informativo" : "Operacional"}
-                    </p>
-                  </div>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                <div className="rounded-lg border p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground">Urgência</p>
+                  <p className={cn("text-xs font-bold mt-0.5",
+                    email.requires_action ? "text-urgent" : email.requires_response ? "text-warning" : "text-success"
+                  )}>
+                    {email.requires_action ? "Alta" : email.requires_response ? "Média" : "Baixa"}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground">Impacto</p>
+                  <p className={cn("text-xs font-bold mt-0.5",
+                    isLegal || isFinancial ? "text-warning" : "text-muted-foreground"
+                  )}>
+                    {isLegal ? "Jurídico" : isFinancial ? "Financeiro" : "Informativo"}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-2 text-center">
+                  <p className="text-[10px] text-muted-foreground">Classificação</p>
+                  <p className="text-xs font-bold mt-0.5 text-foreground">
+                    {email.is_informational ? "Informativo" : "Operacional"}
+                  </p>
                 </div>
               </div>
             </div>
@@ -323,9 +400,8 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
             )}
           </TabsContent>
 
-          {/* CAMADA 2B — DADOS EXTRAÍDOS */}
+          {/* CAMADA 2 — DADOS EXTRAÍDOS */}
           <TabsContent value="data" className="p-4 space-y-4 mt-0">
-            {/* Dados do Email */}
             <div>
               <SectionHeader title="Metadados" icon={Mail} />
               <InfoRow icon={User} label="Remetente" value={email.sender} copyable />
@@ -341,7 +417,6 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
 
             <Separator />
 
-            {/* Dados Jurídicos */}
             {isLegal && (
               <>
                 <div>
@@ -358,7 +433,6 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
               </>
             )}
 
-            {/* Dados Financeiros */}
             {(isFinancial || email.extracted_value) && (
               <>
                 <div>
@@ -388,7 +462,6 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
               </>
             )}
 
-            {/* Prazos */}
             {email.extracted_deadline && !isFinancial && (
               <>
                 <div>
@@ -425,7 +498,6 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
               </>
             )}
 
-            {/* Dados extraídos automaticamente */}
             {(documents.length > 0 || dates.length > 0) && (
               <div>
                 <SectionHeader title="Dados Detectados Automaticamente" icon={Info} />
@@ -464,7 +536,7 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
                   <div>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Corpo do Email</p>
                     <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
-                      {email.snippet || "Conteúdo não disponível. O trecho do email não foi capturado na sincronização."}
+                      {email.snippet || "Conteúdo não disponível."}
                     </p>
                   </div>
                 </div>
@@ -487,7 +559,7 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
           </TabsContent>
         </Tabs>
 
-        {/* Footer with identity */}
+        {/* Footer */}
         <div className="border-t p-3 bg-muted/20">
           <p className="text-[10px] text-muted-foreground text-center italic">
             "Não simplifico a complexidade do seu dia. Eu organizo para você agir com precisão."

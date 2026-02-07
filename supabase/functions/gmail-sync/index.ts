@@ -20,7 +20,7 @@ async function refreshAccessToken(refreshToken: string, clientId: string, client
   return await res.json();
 }
 
-async function classifyEmailWithAI(subject: string, snippet: string, sender: string) {
+async function classifyEmailWithAI(subject: string, snippet: string, sender: string, accountEmail: string = "") {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("LOVABLE_API_KEY not set, skipping AI classification");
@@ -40,22 +40,49 @@ async function classifyEmailWithAI(subject: string, snippet: string, sender: str
         messages: [
           {
             role: "system",
-            content: `Você é um assistente que classifica emails para um profissional brasileiro que atua com advocacia e seguros. Data de hoje: ${today}.
+            content: `Você é um assistente de análise profunda de emails para um escritório de advocacia e seguros no Brasil. Data de hoje: ${today}.
+
+REGRA DE OURO: Não simplifique, ORGANIZE. Jamais omita informações. Toda informação extraída deve ser 100% rastreável ao conteúdo original.
+
 Analise o email e retorne um JSON com:
-- "domain": uma de ["juridico", "pessoal", "descarte"]. Use "juridico" para: processos, prazos judiciais, intimações, citações, audiências, petições, sinistros, apólices, regulações, contratos, notificações legais, cobranças jurídicas, tribunais, OAB, cartórios, seguradoras, SUSEP. Use "pessoal" para: contas pessoais, boletos, pagamentos, compromissos, lembretes, finanças pessoais, compras, serviços. Use "descarte" para: spam, promoções, newsletters, propagandas, emails sem ação necessária.
-- "category": uma de ["pagamentos", "boletos", "prazos", "promocoes", "contatos", "processos", "sinistros", "intimacoes", "outros"]
-- "summary": resumo em 1-2 frases em português (legado)
-- "summary_short": resumo em EXATAMENTE 1 linha curta no formato "📋 Tipo | Ref — ação — prazo". Ex: "💰 Pagamento | Proc. 0001234 — enviar comprovante — vence em 3 dias"
-- "summary_medium": resumo em 4 a 8 linhas explicando: o que é, quem enviou, o que pede, qual o prazo, qual o risco, e o que fazer
-- "summary_full": explicação completa e detalhada com: contexto, partes envolvidas, histórico implícito, próximos passos numerados, consequências de não agir, e o texto original do email resumido
-- "deadline": data do prazo se houver (formato ISO YYYY-MM-DDTHH:mm:ss), ou null
-- "value": valor monetário mencionado (número), ou null
-- "should_create_task": true se o email contém prazo, pagamento, boleto, intimação, audiência ou ação necessária. Nunca true para "descarte".
-- "task_title": título curto para a tarefa (se should_create_task=true), ou null
-- "task_priority": "low", "medium" ou "high" baseado na urgência. Intimações e prazos judiciais são sempre "high".
-- "requires_action": true se requer alguma ação do usuário
-- "requires_response": true se exige resposta por email
-- "is_informational": true se é apenas informativo, sem ação necessária
+
+- "domain": "juridico" | "pessoal" | "descarte"
+  - "juridico": processos, prazos judiciais, intimações, citações, audiências, petições, sinistros, apólices, regulações, contratos, notificações legais, cobranças jurídicas, tribunais, OAB, cartórios, seguradoras, SUSEP
+  - "pessoal": contas pessoais, boletos, pagamentos, compromissos, lembretes, finanças, compras, serviços
+  - "descarte": spam, promoções puras, newsletters sem ação, propagandas
+
+- "category": "pagamentos" | "boletos" | "prazos" | "processos" | "intimacoes" | "sinistros" | "contatos" | "promocoes" | "outros"
+
+- "summary": resumo legado em 1-2 frases
+
+- "summary_short": resumo em 1 linha no formato "📋 Tipo | Referência — ação — prazo"
+
+- "summary_medium": resumo em 4-8 linhas com: o que é, quem enviou, o que pede, qual prazo, qual risco, o que fazer
+
+- "summary_full": ANÁLISE COMPLETA E DETALHADA (mínimo 15 linhas, até 50 linhas). DEVE CONTER:
+  1. IDENTIFICAÇÃO: Nome do remetente, empresa/instituição
+  2. DESTINATÁRIO: Para quem (conta: ${accountEmail})
+  3. CONTEXTO: Tema principal, natureza (jurídico, financeiro, comercial, informativo)
+  4. CONTEÚDO INTEGRAL: TODAS as informações relevantes, números, nomes, referências
+  5. PARTES ENVOLVIDAS: Todas as partes/pessoas/empresas e seus papéis
+  6. DADOS JURÍDICOS (se aplicável): Nº processo, vara, fórum, juiz, partes, tipo de ação, determinação, prazos
+  7. DADOS FINANCEIROS (se aplicável): Valores, tipo operação, referências, status, vencimentos
+  8. DOCUMENTOS/ANEXOS referenciados
+  9. PRAZOS E DATAS: Todas as datas com significado
+  10. ANÁLISE DE RISCO: Impacto de não agir
+  11. AÇÕES RECOMENDADAS: Lista numerada de próximos passos
+  12. CONSEQUÊNCIAS DE INAÇÃO
+
+- "deadline": data ISO se houver prazo, ou null
+- "value": valor monetário (número), ou null
+- "should_create_task": true se contém prazo, pagamento, boleto, intimação, audiência, ação necessária
+- "task_title": título da tarefa se should_create_task=true
+- "task_priority": "low" | "medium" | "high"
+- "requires_action": true se requer ação
+- "requires_response": true se exige resposta
+- "is_informational": true se apenas informativo
+- "suggested_labels": array de strings com etiquetas sugeridas
+
 Responda APENAS o JSON, sem markdown.`,
           },
           {
@@ -198,7 +225,7 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
       const snippet = msgData.snippet || "";
 
       // Classify with AI
-      const classification = await classifyEmailWithAI(subject, snippet, sender);
+      const classification = await classifyEmailWithAI(subject, snippet, sender, account.email);
 
       // Insert email
       const { error: insertError } = await supabase.from("gmail_emails").insert({
