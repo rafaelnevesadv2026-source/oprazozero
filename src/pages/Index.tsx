@@ -14,7 +14,8 @@ import { SearchBar } from "@/components/SearchBar";
 import { LabelManager } from "@/components/LabelManager";
 import { TaskTimeline } from "@/components/TaskTimeline";
 import { DomainTabs, DomainFilter } from "@/components/DomainTabs";
-import { Target, LogOut, Mail } from "lucide-react";
+import { SmartAlertsPanel } from "@/components/SmartAlertsPanel";
+import { Target, LogOut, Mail, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const Index = () => {
@@ -103,6 +104,11 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link to="/processes">
+              <Button variant="outline" size="icon" title="Processos">
+                <FolderOpen className="h-4 w-4" />
+              </Button>
+            </Link>
             <Link to="/emails">
               <Button variant="outline" size="icon" title="Emails">
                 <Mail className="h-4 w-4" />
@@ -172,6 +178,7 @@ const Index = () => {
             </div>
           </div>
           <div className="space-y-4">
+            <SmartAlertsPanel />
             <LabelManager labels={labels} onAdd={addLabel} onDelete={deleteLabel} />
             <TaskTimeline tasks={tasks} />
           </div>

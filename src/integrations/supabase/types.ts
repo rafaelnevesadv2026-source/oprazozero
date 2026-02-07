@@ -65,6 +65,7 @@ export type Database = {
           extracted_value: number | null
           gmail_id: string
           id: string
+          process_id: string | null
           received_at: string | null
           sender: string | null
           snippet: string | null
@@ -83,6 +84,7 @@ export type Database = {
           extracted_value?: number | null
           gmail_id: string
           id?: string
+          process_id?: string | null
           received_at?: string | null
           sender?: string | null
           snippet?: string | null
@@ -101,6 +103,7 @@ export type Database = {
           extracted_value?: number | null
           gmail_id?: string
           id?: string
+          process_id?: string | null
           received_at?: string | null
           sender?: string | null
           snippet?: string | null
@@ -114,6 +117,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "email_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gmail_emails_process_id_fkey"
+            columns: ["process_id"]
+            isOneToOne: false
+            referencedRelation: "processes"
             referencedColumns: ["id"]
           },
         ]
@@ -168,6 +178,45 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      processes: {
+        Row: {
+          adversary: string | null
+          client_name: string
+          created_at: string
+          domain: string
+          id: string
+          notes: string | null
+          process_number: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          adversary?: string | null
+          client_name?: string
+          created_at?: string
+          domain?: string
+          id?: string
+          notes?: string | null
+          process_number: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          adversary?: string | null
+          client_name?: string
+          created_at?: string
+          domain?: string
+          id?: string
+          notes?: string | null
+          process_number?: string
+          status?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -237,6 +286,7 @@ export type Database = {
           domain: string
           id: string
           priority: string
+          process_id: string | null
           source: string | null
           status: string
           title: string
@@ -250,6 +300,7 @@ export type Database = {
           domain?: string
           id?: string
           priority?: string
+          process_id?: string | null
           source?: string | null
           status?: string
           title: string
@@ -263,13 +314,22 @@ export type Database = {
           domain?: string
           id?: string
           priority?: string
+          process_id?: string | null
           source?: string | null
           status?: string
           title?: string
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tasks_process_id_fkey"
+            columns: ["process_id"]
+            isOneToOne: false
+            referencedRelation: "processes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

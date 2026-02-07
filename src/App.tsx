@@ -7,6 +7,8 @@ import { AuthProvider } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Emails from "./pages/Emails";
+import Processes from "./pages/Processes";
+import ProcessDetail from "./pages/ProcessDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +24,8 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/emails" element={<Emails />} />
+            <Route path="/processes" element={<Processes />} />
+            <Route path="/processes/:id" element={<ProcessDetail />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
