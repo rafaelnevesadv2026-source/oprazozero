@@ -103,8 +103,31 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
     }
   }
 
-  // Fetch ALL emails with pagination
-  console.log(`Fetching all emails for ${account.email}...`);
+  // Fix account email if it's a placeholder
+  if (account.email === "conta conectada" || account.email === "conta principal" || account.email === "unknown") {
+    try {
+      const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (userInfoRes.ok) {
+        const userInfo = await userInfoRes.json();
+        if (userInfo.email) {
+          account.email = userInfo.email;
+          await supabase.from("email_accounts").update({ email: userInfo.email }).eq("id", account.id);
+          // Also update existing emails with the correct account_email
+          await supabase.from("gmail_emails").update({ account_email: userInfo.email })
+            .eq("account_id", account.id);
+          console.log(`Fixed account email to: ${userInfo.email}`);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fix account email:", e);
+    }
+  }
+
+  // Fetch emails with pagination, but limit total to avoid timeout
+  const MAX_MESSAGES_PER_RUN = 500;
+  console.log(`Fetching emails for ${account.email} (max ${MAX_MESSAGES_PER_RUN} IDs)...`);
   const allMessages: any[] = [];
   let pageToken: string | null = null;
 
@@ -123,9 +146,10 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
     allMessages.push(...messages);
     pageToken = listData.nextPageToken || null;
     console.log(`Fetched ${allMessages.length} message IDs so far...`);
+    if (allMessages.length >= MAX_MESSAGES_PER_RUN) break;
   } while (pageToken);
 
-  console.log(`Total ${allMessages.length} messages found for ${account.email}`);
+  console.log(`Total ${allMessages.length} messages fetched for ${account.email}`);
 
   // Get already imported email IDs
   const { data: existingEmails } = await supabase
@@ -135,10 +159,14 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
   const existingIds = new Set((existingEmails || []).map((e: any) => e.gmail_id));
 
   const newEmails = allMessages.filter((m: any) => !existingIds.has(m.id));
-  console.log(`${newEmails.length} new emails to process for ${account.email}`);
+  
+  // Limit processing per run to avoid timeout (AI classification is slow)
+  const MAX_PROCESS_PER_RUN = 30;
+  const emailsToProcess = newEmails.slice(0, MAX_PROCESS_PER_RUN);
+  console.log(`${newEmails.length} new emails found, processing ${emailsToProcess.length} for ${account.email}`);
 
   let processed = 0;
-  for (const msg of newEmails) {
+  for (const msg of emailsToProcess) {
     try {
       const msgRes = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
@@ -205,7 +233,8 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
     }
   }
 
-  return { processed, errors: 0 };
+  const hasMore = newEmails.length > MAX_PROCESS_PER_RUN;
+  return { processed, errors: 0, hasMore };
 }
 
 Deno.serve(async (req) => {
@@ -275,15 +304,17 @@ Deno.serve(async (req) => {
 
     let totalProcessed = 0;
     let totalErrors = 0;
+    let hasMore = false;
 
     for (const account of allAccounts) {
       const result = await syncAccount(supabase, account, user.id, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
       totalProcessed += result.processed;
       totalErrors += result.errors;
+      if (result.hasMore) hasMore = true;
     }
 
     return new Response(
-      JSON.stringify({ success: true, processed: totalProcessed, accounts: allAccounts.length, errors: totalErrors }),
+      JSON.stringify({ success: true, processed: totalProcessed, accounts: allAccounts.length, errors: totalErrors, hasMore }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
