@@ -69,6 +69,10 @@ async function classifyWithAI(subject: string, bodyText: string, sender: string,
 Analise o email e retorne APENAS um JSON válido com:
 - "domain": "juridico"|"pessoal"|"descarte"
 - "category": "pagamentos"|"boletos"|"prazos"|"processos"|"intimacoes"|"sinistros"|"contatos"|"promocoes"|"outros"
+  REGRAS DE CATEGORIA:
+  - Emails com "[Push]", "Movimentação processual", "intimação", "citação", "notificação judicial", "despacho", "decisão judicial", "mandado" → SEMPRE "intimacoes"
+  - "intimacoes" = qualquer comunicação/movimentação de tribunal, vara ou sistema judicial (PJe, e-Proc, PROJUDI, TJ, TRT, STJ, STF)
+  - "processos" = apenas informações gerais sobre processos SEM movimentação judicial
 - "summary": resumo em 1-2 frases
 - "summary_short": 1 linha "📋 Tipo | Ref — ação — prazo"
 - "summary_medium": 4-8 linhas
