@@ -6,9 +6,10 @@ import { cn } from "@/lib/utils";
 interface DailyPanelProps {
   tasks: Task[];
   onToggle: (id: string) => void;
+  onSelectTask?: (task: Task) => void;
 }
 
-export function DailyPanel({ tasks, onToggle }: DailyPanelProps) {
+export function DailyPanel({ tasks, onToggle, onSelectTask }: DailyPanelProps) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const todayTasks = useMemo(() => {
@@ -92,7 +93,7 @@ export function DailyPanel({ tasks, onToggle }: DailyPanelProps) {
                     status === "overdue" ? "text-urgent" : "text-muted-foreground hover:text-primary"
                   )} />
                 </button>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onSelectTask?.(t)}>
                   <span className="truncate block text-card-foreground">{t.title}</span>
                   <span className={cn(
                     "text-xs",
