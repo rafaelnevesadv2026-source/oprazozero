@@ -9,7 +9,7 @@ import {
   AlertTriangle, CheckCircle, Building2, Hash, Gavel, Users,
   ArrowRight, Copy, Zap, Info, Shield, TrendingUp,
   CircleDot, ChevronRight, ExternalLink, Flag, Tag, RefreshCw,
-  Trash2, CheckCheck
+  Trash2, CheckCheck, Archive
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -162,6 +162,7 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: E
   const [reanalyzing, setReanalyzing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   if (!email) return null;
 
@@ -254,15 +255,31 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: E
     if (!email) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.from("gmail_emails").delete().eq("id", email.id);
+      const { error } = await supabase.from("gmail_emails").update({ status: "deleted" }).eq("id", email.id);
       if (error) throw error;
-      toast({ title: "Email excluído", description: "O email foi removido com sucesso." });
+      toast({ title: "Email movido para finalizados", description: "O email foi movido para o painel de finalizados." });
       onOpenChange(false);
       onDeleteEmail?.(email.id);
     } catch {
       toast({ title: "Erro ao excluir", variant: "destructive" });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleArchiveEmail = async () => {
+    if (!email) return;
+    setArchiving(true);
+    try {
+      const { error } = await supabase.from("gmail_emails").update({ status: "archived" }).eq("id", email.id);
+      if (error) throw error;
+      toast({ title: "Email arquivado", description: "Movido para o painel de finalizados." });
+      onOpenChange(false);
+      onDeleteEmail?.(email.id);
+    } catch {
+      toast({ title: "Erro ao arquivar", variant: "destructive" });
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -288,7 +305,11 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: E
         for (const task of linkedTasks) {
           await supabase.from("tasks").update({ status: "completed" }).eq("id", task.id);
         }
-        toast({ title: "Tarefa concluída!", description: `${linkedTasks.length} tarefa(s) marcada(s) como concluída(s).` });
+        // Also archive the email
+        await supabase.from("gmail_emails").update({ status: "done" }).eq("id", email.id);
+        toast({ title: "Tarefa concluída!", description: `${linkedTasks.length} tarefa(s) concluída(s). Email movido para finalizados.` });
+        onOpenChange(false);
+        onDeleteEmail?.(email.id);
       }
     } catch {
       toast({ title: "Erro ao concluir tarefa", variant: "destructive" });
@@ -338,7 +359,7 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: E
           </div>
 
           {/* ACTION BUTTONS */}
-          <div className="flex items-center gap-2 mt-3">
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
             {email.task_created && (
               <Button
                 variant="outline"
@@ -354,12 +375,22 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: E
             <Button
               variant="outline"
               size="sm"
+              className="gap-1.5 text-[11px] h-8 border-primary/30 text-primary hover:bg-primary/10"
+              onClick={handleArchiveEmail}
+              disabled={archiving}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              {archiving ? "Arquivando..." : "Arquivar"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               className="gap-1.5 text-[11px] h-8 border-destructive/30 text-destructive hover:bg-destructive/10 ml-auto"
               onClick={handleDeleteEmail}
               disabled={deleting}
             >
               <Trash2 className="h-3.5 w-3.5" />
-              {deleting ? "Excluindo..." : "Excluir Email"}
+              {deleting ? "Excluindo..." : "Excluir"}
             </Button>
           </div>
         </div>
