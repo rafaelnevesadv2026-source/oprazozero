@@ -147,24 +147,33 @@ Responda APENAS o JSON, sem markdown.`,
 
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content || "";
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  console.log("AI raw response length:", content.length, "first 200 chars:", content.slice(0, 200));
+  
+  // Clean markdown code fences if present
+  const cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
-    const parsed = JSON.parse(jsonMatch[0]);
-    return {
-      domain: parsed.domain || "pessoal",
-      category: parsed.category || "outros",
-      summary: parsed.summary || "",
-      summary_short: parsed.summary_short || "",
-      summary_medium: parsed.summary_medium || "",
-      summary_full: parsed.summary_full || "",
-      deadline: parsed.deadline || null,
-      value: parsed.value || null,
-      requires_action: parsed.requires_action === true,
-      requires_response: parsed.requires_response === true,
-      is_informational: parsed.is_informational === true,
-    };
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        domain: parsed.domain || "pessoal",
+        category: parsed.category || "outros",
+        summary: parsed.summary || "",
+        summary_short: parsed.summary_short || "",
+        summary_medium: parsed.summary_medium || "",
+        summary_full: parsed.summary_full || "",
+        deadline: parsed.deadline || null,
+        value: parsed.value || null,
+        requires_action: parsed.requires_action === true,
+        requires_response: parsed.requires_response === true,
+        is_informational: parsed.is_informational === true,
+      };
+    } catch (parseErr) {
+      console.error("JSON parse error:", parseErr, "content:", content.slice(0, 500));
+    }
+  } else {
+    console.error("No JSON found in AI response:", content.slice(0, 500));
   }
-  return null;
 }
 
 Deno.serve(async (req) => {
