@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.gmail-sync]
 verify_jwt = false
+
+[functions.smart-alerts]
+verify_jwt = false
