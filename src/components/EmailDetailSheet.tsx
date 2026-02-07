@@ -8,7 +8,8 @@ import {
   Mail, Calendar, DollarSign, Scale, User, FileText, Clock,
   AlertTriangle, CheckCircle, Building2, Hash, Gavel, Users,
   ArrowRight, Copy, Zap, Info, Shield, TrendingUp,
-  CircleDot, ChevronRight, ExternalLink, Flag, Tag, RefreshCw
+  CircleDot, ChevronRight, ExternalLink, Flag, Tag, RefreshCw,
+  Trash2, CheckCheck
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -24,6 +25,7 @@ interface EmailDetailSheetProps {
   email: GmailEmail | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onDeleteEmail?: (emailId: string) => void;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -155,9 +157,11 @@ function EmailLabelManager({ emailId }: { emailId: string }) {
   );
 }
 
-export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheetProps) {
-  const { session } = useAuth();
+export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: EmailDetailSheetProps) {
+  const { session, user } = useAuth();
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [markingDone, setMarkingDone] = useState(false);
 
   if (!email) return null;
 
@@ -246,6 +250,53 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
     }
   };
 
+  const handleDeleteEmail = async () => {
+    if (!email) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("gmail_emails").delete().eq("id", email.id);
+      if (error) throw error;
+      toast({ title: "Email excluído", description: "O email foi removido com sucesso." });
+      onOpenChange(false);
+      onDeleteEmail?.(email.id);
+    } catch {
+      toast({ title: "Erro ao excluir", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleMarkTaskDone = async () => {
+    if (!email || !user) return;
+    setMarkingDone(true);
+    try {
+      // Find tasks linked to this email (by subject match in description)
+      const { data: tasks } = await supabase
+        .from("tasks")
+        .select("id, title, description")
+        .eq("user_id", user.id)
+        .eq("status", "pending")
+        .eq("source", "email");
+
+      const linkedTasks = (tasks || []).filter(t =>
+        t.description?.includes(email.subject || "") || t.title?.includes(email.subject || "")
+      );
+
+      if (linkedTasks.length === 0) {
+        toast({ title: "Nenhuma tarefa vinculada", description: "Não há tarefas pendentes deste email." });
+      } else {
+        for (const task of linkedTasks) {
+          await supabase.from("tasks").update({ status: "completed" }).eq("id", task.id);
+        }
+        toast({ title: "Tarefa concluída!", description: `${linkedTasks.length} tarefa(s) marcada(s) como concluída(s).` });
+      }
+    } catch {
+      toast({ title: "Erro ao concluir tarefa", variant: "destructive" });
+    } finally {
+      setMarkingDone(false);
+    }
+  };
+
   const summaryIsPoor = !email.summary_full || email.summary_full.length < 200;
 
   return (
@@ -284,6 +335,32 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
             {email.account_email && (
               <span className="shrink-0 text-primary">{email.account_email}</span>
             )}
+          </div>
+
+          {/* ACTION BUTTONS */}
+          <div className="flex items-center gap-2 mt-3">
+            {email.task_created && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-[11px] h-8 border-success/30 text-success hover:bg-success/10"
+                onClick={handleMarkTaskDone}
+                disabled={markingDone}
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+                {markingDone ? "Concluindo..." : "Concluir Tarefa"}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-[11px] h-8 border-destructive/30 text-destructive hover:bg-destructive/10 ml-auto"
+              onClick={handleDeleteEmail}
+              disabled={deleting}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {deleting ? "Excluindo..." : "Excluir Email"}
+            </Button>
           </div>
         </div>
 

@@ -378,6 +378,7 @@ const Emails = () => {
               email={selectedEmail}
               open={!!selectedEmail}
               onOpenChange={(open) => { if (!open) setSelectedEmail(null); }}
+              onDeleteEmail={(id) => { setSelectedEmail(null); }}
             />
           </div>
         )}
