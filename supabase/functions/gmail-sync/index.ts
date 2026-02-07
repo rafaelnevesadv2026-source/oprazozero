@@ -24,7 +24,7 @@ async function classifyEmailWithAI(subject: string, snippet: string, sender: str
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("LOVABLE_API_KEY not set, skipping AI classification");
-    return { domain: "pessoal", category: "outros", summary: snippet, deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium" };
+    return { domain: "pessoal", category: "outros", summary: snippet, summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
   }
 
   try {
@@ -44,12 +44,18 @@ async function classifyEmailWithAI(subject: string, snippet: string, sender: str
 Analise o email e retorne um JSON com:
 - "domain": uma de ["juridico", "pessoal", "descarte"]. Use "juridico" para: processos, prazos judiciais, intimações, citações, audiências, petições, sinistros, apólices, regulações, contratos, notificações legais, cobranças jurídicas, tribunais, OAB, cartórios, seguradoras, SUSEP. Use "pessoal" para: contas pessoais, boletos, pagamentos, compromissos, lembretes, finanças pessoais, compras, serviços. Use "descarte" para: spam, promoções, newsletters, propagandas, emails sem ação necessária.
 - "category": uma de ["pagamentos", "boletos", "prazos", "promocoes", "contatos", "processos", "sinistros", "intimacoes", "outros"]
-- "summary": resumo em 1-2 frases em português
+- "summary": resumo em 1-2 frases em português (legado)
+- "summary_short": resumo em EXATAMENTE 1 linha curta no formato "📋 Tipo | Ref — ação — prazo". Ex: "💰 Pagamento | Proc. 0001234 — enviar comprovante — vence em 3 dias"
+- "summary_medium": resumo em 4 a 8 linhas explicando: o que é, quem enviou, o que pede, qual o prazo, qual o risco, e o que fazer
+- "summary_full": explicação completa e detalhada com: contexto, partes envolvidas, histórico implícito, próximos passos numerados, consequências de não agir, e o texto original do email resumido
 - "deadline": data do prazo se houver (formato ISO YYYY-MM-DDTHH:mm:ss), ou null
 - "value": valor monetário mencionado (número), ou null
 - "should_create_task": true se o email contém prazo, pagamento, boleto, intimação, audiência ou ação necessária. Nunca true para "descarte".
 - "task_title": título curto para a tarefa (se should_create_task=true), ou null
 - "task_priority": "low", "medium" ou "high" baseado na urgência. Intimações e prazos judiciais são sempre "high".
+- "requires_action": true se requer alguma ação do usuário
+- "requires_response": true se exige resposta por email
+- "is_informational": true se é apenas informativo, sem ação necessária
 Responda APENAS o JSON, sem markdown.`,
           },
           {
@@ -71,18 +77,24 @@ Responda APENAS o JSON, sem markdown.`,
         domain: parsed.domain || "pessoal",
         category: parsed.category || "outros",
         summary: parsed.summary || snippet,
+        summary_short: parsed.summary_short || "",
+        summary_medium: parsed.summary_medium || "",
+        summary_full: parsed.summary_full || "",
         deadline: parsed.deadline || null,
         value: parsed.value || null,
         should_create_task: parsed.should_create_task || false,
         task_title: parsed.task_title || null,
         task_priority: parsed.task_priority || "medium",
+        requires_action: parsed.requires_action || false,
+        requires_response: parsed.requires_response || false,
+        is_informational: parsed.is_informational || true,
       };
     }
   } catch (err) {
     console.error("AI classification error:", err);
   }
 
-  return { domain: "pessoal", category: "outros", summary: snippet, deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium" };
+  return { domain: "pessoal", category: "outros", summary: snippet, summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
 }
 
 async function syncAccount(supabase: any, account: any, userId: string, clientId: string, clientSecret: string) {
@@ -198,12 +210,18 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
         received_at: dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(),
         category: classification.category,
         ai_summary: classification.summary,
+        summary_short: classification.summary_short || null,
+        summary_medium: classification.summary_medium || null,
+        summary_full: classification.summary_full || null,
         extracted_deadline: classification.deadline,
         extracted_value: classification.value,
         account_id: account.id,
         account_email: account.email,
         task_created: classification.should_create_task,
         domain: classification.domain || "pessoal",
+        requires_action: classification.requires_action || false,
+        requires_response: classification.requires_response || false,
+        is_informational: classification.is_informational || true,
       });
 
       if (insertError) {
