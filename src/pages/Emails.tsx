@@ -150,7 +150,7 @@ function AccountCard({ account, onDisconnect }: { account: EmailAccount; onDisco
 
 const Emails = () => {
   const { user, session, loading: authLoading } = useAuth();
-  const { connected, accounts, emails, loading, syncing, connectGmail, disconnectAccount, syncEmails, refetch } = useGmail();
+  const { connected, accounts, emails, loading, syncing, connectGmail, disconnectAccount, syncEmails, refetch, updateEmailInState } = useGmail();
   const [selectedEmail, setSelectedEmail] = useState<GmailEmail | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState<EmailCategoryFilter>("all");
@@ -462,6 +462,7 @@ const Emails = () => {
               open={!!selectedEmail}
               onOpenChange={(open) => { if (!open) setSelectedEmail(null); }}
               onDeleteEmail={(id) => { setSelectedEmail(null); refetch(); }}
+              onUpdateEmailStatus={(id, status) => { updateEmailInState(id, { status }); }}
             />
           </div>
         )}
