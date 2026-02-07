@@ -187,5 +187,13 @@ export function useGmail() {
     };
   }, [connected, session, syncEmails]);
 
-  return { connected, accounts, emails, loading, syncing, connectGmail, disconnectAccount, syncEmails, refetch: fetchEmails };
+  const removeEmailFromState = useCallback((emailId: string) => {
+    setEmails(prev => prev.filter(e => e.id !== emailId));
+  }, []);
+
+  const updateEmailInState = useCallback((emailId: string, updates: Partial<GmailEmail>) => {
+    setEmails(prev => prev.map(e => e.id === emailId ? { ...e, ...updates } : e));
+  }, []);
+
+  return { connected, accounts, emails, loading, syncing, connectGmail, disconnectAccount, syncEmails, refetch: fetchEmails, removeEmailFromState, updateEmailInState };
 }

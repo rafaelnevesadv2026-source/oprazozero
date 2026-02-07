@@ -26,6 +26,7 @@ interface EmailDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDeleteEmail?: (emailId: string) => void;
+  onUpdateEmailStatus?: (emailId: string, status: string) => void;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -157,7 +158,7 @@ function EmailLabelManager({ emailId }: { emailId: string }) {
   );
 }
 
-export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: EmailDetailSheetProps) {
+export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail, onUpdateEmailStatus }: EmailDetailSheetProps) {
   const { session, user } = useAuth();
   const [reanalyzing, setReanalyzing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -254,12 +255,13 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: E
   const handleDeleteEmail = async () => {
     if (!email) return;
     setDeleting(true);
+    // Optimistic: close and remove immediately
+    onOpenChange(false);
+    onUpdateEmailStatus?.(email.id, "deleted");
     try {
       const { error } = await supabase.from("gmail_emails").update({ status: "deleted" }).eq("id", email.id);
       if (error) throw error;
-      toast({ title: "Email movido para finalizados", description: "O email foi movido para o painel de finalizados." });
-      onOpenChange(false);
-      onDeleteEmail?.(email.id);
+      toast({ title: "Email excluído", description: "Movido para finalizados." });
     } catch {
       toast({ title: "Erro ao excluir", variant: "destructive" });
     } finally {
@@ -270,12 +272,12 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: E
   const handleArchiveEmail = async () => {
     if (!email) return;
     setArchiving(true);
+    onOpenChange(false);
+    onUpdateEmailStatus?.(email.id, "archived");
     try {
       const { error } = await supabase.from("gmail_emails").update({ status: "archived" }).eq("id", email.id);
       if (error) throw error;
-      toast({ title: "Email arquivado", description: "Movido para o painel de finalizados." });
-      onOpenChange(false);
-      onDeleteEmail?.(email.id);
+      toast({ title: "Email arquivado", description: "Movido para finalizados." });
     } catch {
       toast({ title: "Erro ao arquivar", variant: "destructive" });
     } finally {
@@ -305,11 +307,11 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail }: E
         for (const task of linkedTasks) {
           await supabase.from("tasks").update({ status: "completed" }).eq("id", task.id);
         }
-        // Also archive the email
-        await supabase.from("gmail_emails").update({ status: "done" }).eq("id", email.id);
-        toast({ title: "Tarefa concluída!", description: `${linkedTasks.length} tarefa(s) concluída(s). Email movido para finalizados.` });
+        // Also mark email as done
         onOpenChange(false);
-        onDeleteEmail?.(email.id);
+        onUpdateEmailStatus?.(email.id, "done");
+        await supabase.from("gmail_emails").update({ status: "done" }).eq("id", email.id);
+        toast({ title: "Tarefa concluída!", description: `${linkedTasks.length} tarefa(s) concluída(s). Email finalizado.` });
       }
     } catch {
       toast({ title: "Erro ao concluir tarefa", variant: "destructive" });
