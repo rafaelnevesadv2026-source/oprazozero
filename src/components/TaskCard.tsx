@@ -19,22 +19,24 @@ interface TaskCardProps {
   task: Task;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onClick?: () => void;
 }
 
-export function TaskCard({ task, onToggle, onDelete }: TaskCardProps) {
+export function TaskCard({ task, onToggle, onDelete, onClick }: TaskCardProps) {
   const deadlineStatus = getDeadlineStatus(task.deadline);
   const isCompleted = task.status === "completed";
 
   return (
     <div
+      onClick={onClick}
       className={cn(
-        "group relative rounded-lg border bg-card p-4 transition-all duration-200 hover:shadow-md animate-slide-in",
+        "group relative rounded-lg border bg-card p-4 transition-all duration-200 hover:shadow-md hover:border-primary/40 animate-slide-in cursor-pointer",
         isCompleted && "opacity-60"
       )}
     >
       <div className="flex items-start gap-3">
         <button
-          onClick={() => onToggle(task.id)}
+          onClick={(e) => { e.stopPropagation(); onToggle(task.id); }}
           className={cn(
             "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
             isCompleted
@@ -89,7 +91,7 @@ export function TaskCard({ task, onToggle, onDelete }: TaskCardProps) {
         </div>
 
         <button
-          onClick={() => onDelete(task.id)}
+          onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
           className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-urgent p-1"
         >
           <Trash2 className="h-4 w-4" />

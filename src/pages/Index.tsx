@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Task } from "@/lib/tasks";
 import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTasks } from "@/hooks/useTasks";
@@ -20,6 +21,7 @@ import { SmartAlertsPanel } from "@/components/SmartAlertsPanel";
 import { AuditButton } from "@/components/AuditButton";
 import { WeekSimulation } from "@/components/WeekSimulation";
 import { PowerSearch } from "@/components/PowerSearch";
+import { TaskDetailSheet } from "@/components/TaskDetailSheet";
 import { Target, LogOut, Mail, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -46,6 +48,7 @@ const Index = () => {
   const [filter, setFilter] = useState<FilterType>("all");
   const [domain, setDomain] = useState<DomainFilter>("all");
   const [statsFilter, setStatsFilter] = useState<StatsFilter | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const domainCounts = useMemo(() => {
     const pending = tasks.filter(t => t.status === "pending");
@@ -201,7 +204,7 @@ const Index = () => {
                     </div>
                   ) : (
                     filteredTasks.map((task) => (
-                      <TaskCard key={task.id} task={task} onToggle={toggleComplete} onDelete={deleteTask} />
+                      <TaskCard key={task.id} task={task} onToggle={toggleComplete} onDelete={deleteTask} onClick={() => setSelectedTask(task)} />
                     ))
                   )}
                 </div>
@@ -218,6 +221,14 @@ const Index = () => {
             <TaskTimeline tasks={tasks} />
           </div>
         </div>
+
+        <TaskDetailSheet
+          task={selectedTask}
+          open={!!selectedTask}
+          onOpenChange={(open) => { if (!open) setSelectedTask(null); }}
+          onToggle={toggleComplete}
+          onDelete={deleteTask}
+        />
       </div>
     </div>
   );
