@@ -203,14 +203,22 @@ const Emails = () => {
   const finalizedEmails = useMemo(() => emails.filter(e => e.status === "done" || e.status === "archived" || e.status === "deleted"), [emails]);
 
   // Compute filter counts (from active only)
-  const filterCounts = useMemo(() => ({
-    total: activeEmails.length,
-    action: activeEmails.filter(e => e.requires_action).length,
-    response: activeEmails.filter(e => e.requires_response).length,
-    informational: activeEmails.filter(e => e.is_informational && !e.requires_action && !e.requires_response).length,
-    juridico: activeEmails.filter(e => e.domain === "juridico").length,
-    pessoal: activeEmails.filter(e => e.domain === "pessoal").length,
-  }), [activeEmails]);
+  const filterCounts = useMemo(() => {
+    const byCategory: Record<string, number> = {};
+    for (const e of activeEmails) {
+      const cat = e.category || "outros";
+      byCategory[cat] = (byCategory[cat] || 0) + 1;
+    }
+    return {
+      total: activeEmails.length,
+      action: activeEmails.filter(e => e.requires_action).length,
+      response: activeEmails.filter(e => e.requires_response).length,
+      informational: activeEmails.filter(e => e.is_informational && !e.requires_action && !e.requires_response).length,
+      juridico: activeEmails.filter(e => e.domain === "juridico").length,
+      pessoal: activeEmails.filter(e => e.domain === "pessoal").length,
+      byCategory,
+    };
+  }, [activeEmails]);
 
   // Stats
   const stats = useMemo(() => ({

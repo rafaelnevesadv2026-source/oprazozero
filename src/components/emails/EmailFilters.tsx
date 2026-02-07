@@ -24,6 +24,7 @@ interface EmailFiltersProps {
     informational: number;
     juridico: number;
     pessoal: number;
+    byCategory: Record<string, number>;
   };
 }
 
@@ -126,20 +127,23 @@ export function EmailFilters({
 
         {/* Category pills */}
         <div className="flex items-center gap-1 flex-wrap">
-          {categories.map((c) => (
-            <button
-              key={c.key}
-              onClick={() => onCategoryChange(category === c.key ? "all" : c.key)}
-              className={cn(
-                "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
-                category === c.key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
-              )}
-            >
-              {c.label}
-            </button>
-          ))}
+          {categories.map((c) => {
+            const count = c.key === "all" ? counts.total : (counts.byCategory[c.key] || 0);
+            return (
+              <button
+                key={c.key}
+                onClick={() => onCategoryChange(category === c.key ? "all" : c.key)}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                  category === c.key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {c.label} ({count})
+              </button>
+            );
+          })}
         </div>
 
         {hasActiveFilter && (
