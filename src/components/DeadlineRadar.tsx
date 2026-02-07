@@ -1,5 +1,5 @@
 import { Task, getDaysRemaining } from "@/lib/tasks";
-import { AlertTriangle, Clock, CalendarDays, CalendarCheck } from "lucide-react";
+import { AlertTriangle, Clock, CalendarDays, CalendarCheck, CalendarClock, AlertOctagon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DeadlineRadarProps {
@@ -11,27 +11,33 @@ export function DeadlineRadar({ tasks }: DeadlineRadarProps) {
 
   const buckets = [
     {
+      label: "Atrasados",
+      icon: AlertOctagon,
+      className: "text-destructive bg-destructive/10 border-destructive/30",
+      count: pending.filter((t) => getDaysRemaining(t.deadline) < 0).length,
+    },
+    {
       label: "Hoje",
       icon: AlertTriangle,
       className: "text-urgent bg-urgent/10 border-urgent/30",
-      count: pending.filter((t) => {
-        const d = getDaysRemaining(t.deadline);
-        return d <= 0;
-      }).length,
-    },
-    {
-      label: "Amanhã",
-      icon: Clock,
-      className: "text-warning bg-warning/10 border-warning/30",
-      count: pending.filter((t) => getDaysRemaining(t.deadline) === 1).length,
+      count: pending.filter((t) => getDaysRemaining(t.deadline) === 0).length,
     },
     {
       label: "3 dias",
+      icon: Clock,
+      className: "text-warning bg-warning/10 border-warning/30",
+      count: pending.filter((t) => {
+        const d = getDaysRemaining(t.deadline);
+        return d >= 1 && d <= 3;
+      }).length,
+    },
+    {
+      label: "5 dias",
       icon: CalendarDays,
       className: "text-primary bg-primary/10 border-primary/30",
       count: pending.filter((t) => {
         const d = getDaysRemaining(t.deadline);
-        return d >= 2 && d <= 3;
+        return d >= 4 && d <= 5;
       }).length,
     },
     {
@@ -40,7 +46,16 @@ export function DeadlineRadar({ tasks }: DeadlineRadarProps) {
       className: "text-success bg-success/10 border-success/30",
       count: pending.filter((t) => {
         const d = getDaysRemaining(t.deadline);
-        return d >= 4 && d <= 7;
+        return d >= 6 && d <= 7;
+      }).length,
+    },
+    {
+      label: "30 dias",
+      icon: CalendarClock,
+      className: "text-muted-foreground bg-muted border-border",
+      count: pending.filter((t) => {
+        const d = getDaysRemaining(t.deadline);
+        return d >= 8 && d <= 30;
       }).length,
     },
   ];
@@ -48,7 +63,7 @@ export function DeadlineRadar({ tasks }: DeadlineRadarProps) {
   return (
     <div className="rounded-lg border bg-card p-4">
       <h3 className="text-sm font-semibold text-card-foreground mb-3">🎯 Radar de Prazos</h3>
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {buckets.map((b) => (
           <div
             key={b.label}

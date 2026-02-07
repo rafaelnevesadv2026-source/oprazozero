@@ -1,10 +1,10 @@
 import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useGmail, GmailEmail } from "@/hooks/useGmail";
+import { useGmail, GmailEmail, EmailAccount } from "@/hooks/useGmail";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Target, ArrowLeft, Mail, RefreshCw, Link as LinkIcon, Calendar, DollarSign } from "lucide-react";
+import { ArrowLeft, Mail, RefreshCw, Link as LinkIcon, Calendar, DollarSign, Plus, Trash2, CheckCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -36,14 +36,25 @@ function EmailCard({ email }: { email: GmailEmail }) {
             <p className="font-medium text-foreground truncate">{email.subject || "(sem assunto)"}</p>
             <p className="text-xs text-muted-foreground truncate">{email.sender}</p>
           </div>
-          <Badge variant="outline" className={categoryColors[cat]}>
-            {categoryLabels[cat] || cat}
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            {email.task_created && (
+              <Badge variant="outline" className="bg-success/10 text-success border-success/30 text-[10px]">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Tarefa
+              </Badge>
+            )}
+            <Badge variant="outline" className={categoryColors[cat]}>
+              {categoryLabels[cat] || cat}
+            </Badge>
+          </div>
         </div>
         {email.ai_summary && (
           <p className="text-sm text-muted-foreground line-clamp-2">{email.ai_summary}</p>
         )}
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {email.account_email && (
+            <span className="text-primary font-medium">{email.account_email}</span>
+          )}
           {email.received_at && (
             <span>{format(new Date(email.received_at), "dd MMM yyyy, HH:mm", { locale: ptBR })}</span>
           )}
@@ -65,9 +76,24 @@ function EmailCard({ email }: { email: GmailEmail }) {
   );
 }
 
+function AccountCard({ account, onDisconnect }: { account: EmailAccount; onDisconnect: (id: string) => void }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border bg-card p-3">
+      <div className="flex items-center gap-2">
+        <Mail className="h-4 w-4 text-primary" />
+        <span className="text-sm font-medium text-foreground">{account.email}</span>
+        <Badge variant="outline" className="text-[10px] bg-success/10 text-success border-success/30">Ativo</Badge>
+      </div>
+      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => onDisconnect(account.id)}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 const Emails = () => {
   const { user, loading: authLoading } = useAuth();
-  const { connected, emails, loading, syncing, connectGmail, syncEmails } = useGmail();
+  const { connected, accounts, emails, loading, syncing, connectGmail, disconnectAccount, syncEmails } = useGmail();
 
   if (authLoading || loading) {
     return (
@@ -95,10 +121,28 @@ const Emails = () => {
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground">Emails Analisados</h1>
-              <p className="text-sm text-muted-foreground">Integração Gmail + IA</p>
+              <p className="text-sm text-muted-foreground">Integração Gmail + IA • Atualização automática</p>
             </div>
           </div>
         </div>
+
+        {/* Accounts section */}
+        {connected && accounts.length > 0 && (
+          <div className="mb-6 space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">Contas conectadas</h2>
+              <Button onClick={connectGmail} variant="outline" size="sm" className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Adicionar conta
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {accounts.map((acc) => (
+                <AccountCard key={acc.id} account={acc} onDisconnect={disconnectAccount} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {!connected ? (
           <Card className="border-dashed">
@@ -108,8 +152,8 @@ const Emails = () => {
               </div>
               <h2 className="text-lg font-semibold text-foreground mb-2">Conecte seu Gmail</h2>
               <p className="text-sm text-muted-foreground mb-6 max-w-md">
-                Conecte sua conta do Google para sincronizar emails automaticamente.
-                A IA vai classificar cada mensagem e extrair prazos, valores e ações.
+                Conecte suas contas do Google para sincronizar emails automaticamente.
+                A IA vai classificar cada mensagem, extrair prazos e criar tarefas automaticamente.
               </p>
               <Button onClick={connectGmail} className="gap-2">
                 <Mail className="h-4 w-4" />
@@ -122,6 +166,7 @@ const Emails = () => {
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
                 {emails.length} email{emails.length !== 1 ? "s" : ""} analisado{emails.length !== 1 ? "s" : ""}
+                {" • "}Sincronização automática a cada 5 min
               </p>
               <Button onClick={syncEmails} disabled={syncing} variant="outline" size="sm" className="gap-2">
                 <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />

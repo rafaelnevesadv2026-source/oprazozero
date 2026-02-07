@@ -8,6 +8,7 @@ export interface Task {
   deadline: string; // ISO date string
   priority: TaskPriority;
   status: TaskStatus;
+  source?: string;
   createdAt: string;
 }
 

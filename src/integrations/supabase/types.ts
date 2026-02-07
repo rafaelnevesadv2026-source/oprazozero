@@ -14,8 +14,49 @@ export type Database = {
   }
   public: {
     Tables: {
+      email_accounts: {
+        Row: {
+          access_token: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          provider: string
+          refresh_token: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          email: string
+          expires_at: string
+          id?: string
+          provider?: string
+          refresh_token: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          provider?: string
+          refresh_token?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       gmail_emails: {
         Row: {
+          account_email: string | null
+          account_id: string | null
           ai_summary: string | null
           category: string | null
           created_at: string
@@ -31,6 +72,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          account_email?: string | null
+          account_id?: string | null
           ai_summary?: string | null
           category?: string | null
           created_at?: string
@@ -46,6 +89,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          account_email?: string | null
+          account_id?: string | null
           ai_summary?: string | null
           category?: string | null
           created_at?: string
@@ -60,7 +105,15 @@ export type Database = {
           task_created?: boolean | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "gmail_emails_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "email_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       gmail_tokens: {
         Row: {
