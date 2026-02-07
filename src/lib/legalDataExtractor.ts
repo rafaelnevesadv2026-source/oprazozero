@@ -13,36 +13,51 @@ export interface LegalData {
   whatToDo: string[];
 }
 
-// Simple field extraction: find "Label: Value" where value goes until next known label or end
-function extractField(text: string, ...labels: string[]): string | null {
-  // All possible next-field labels to stop at
-  const stopLabels = [
-    "Polo Ativo", "Polo Passivo", "Classe Judicial", "Classe judicial",
-    "Órgão", "Orgão", "ÃrgÃ£o", "Ãrg", "Data de Autuação", "Data de AutuaÃ§Ã£o",
-    "Assunto", "Data -", "Data - Movimento", "Caso n", "ATENÇÃO", "ATENÃÃO",
-    "Número do Processo", "NÃºmero do Processo",
-    "Prezado", "Informamos"
-  ];
+// All possible field labels (used as stop boundaries)
+const ALL_LABELS = [
+  "Polo Ativo", "Polo Passivo", "Classe Judicial", "Classe judicial",
+  "Órgão", "Orgão", "ÃrgÃ£o",
+  "Data de Autuação", "Data de AutuaÃ§Ã£o",
+  "Assunto", "Data - Movimento", "Data -",
+  "Caso n", "ATENÇÃO", "ATENÃÃO",
+  "Número do Processo", "NÃºmero do Processo",
+  "Prezado", "Informamos",
+];
 
+function escapeRegex(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Extract field by label, stopping at the next known label
+function extractField(text: string, ...labels: string[]): string | null {
   for (const label of labels) {
-    // Build a stop pattern from all labels except the current one
-    const otherLabels = stopLabels
+    const otherLabels = ALL_LABELS
       .filter(l => l.toLowerCase() !== label.toLowerCase())
-      .map(l => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .map(escapeRegex)
       .join("|");
 
     const regex = new RegExp(
-      label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + 
-      "[:\\s]+(.+?)(?=\\s*(?:" + otherLabels + ")[:\\s]|$)",
+      escapeRegex(label) + "[:\\s]+(.+?)(?=\\s*(?:" + otherLabels + ")[:\\s]|$)",
       "is"
     );
     const match = text.match(regex);
-    if (match && match[1].trim()) {
-      // Clean up the value
+    if (match && match[1].trim().length > 0 && match[1].trim().length < 500) {
       let val = match[1].trim();
-      // Remove trailing "Diário." or similar noise
-      val = val.replace(/\s*DiÃ¡rio\.?\s*$/, "").replace(/\s*Diário\.?\s*$/, "").trim();
-      if (val.length > 0 && val.length < 500) return val;
+      val = val.replace(/\s*DiÃ¡rio\.?\s*$/i, "").replace(/\s*Diário\.?\s*$/i, "").trim();
+      if (val.length > 0) return val;
+    }
+  }
+  return null;
+}
+
+// Extract data from clean summary text using flexible patterns
+function extractFromSummary(text: string | null | undefined, patterns: RegExp[]): string | null {
+  if (!text) return null;
+  for (const regex of patterns) {
+    const match = text.match(regex);
+    if (match && match[1]) {
+      const val = match[1].trim();
+      if (val.length > 2 && val.length < 200) return val;
     }
   }
   return null;
@@ -63,6 +78,8 @@ const DECISION_KEYWORDS: { pattern: RegExp; label: string; severity: "high" | "m
   { pattern: /DecisÃ£o/i, label: "Decisão Interlocutória", severity: "high" },
   { pattern: /Proferido despacho de mero expediente/i, label: "Despacho de Mero Expediente", severity: "low" },
   { pattern: /despacho.*mero.*expediente/i, label: "Despacho de Mero Expediente", severity: "low" },
+  { pattern: /Juntada de Peti[cç][aã]o/i, label: "Juntada de Petição", severity: "low" },
+  { pattern: /Juntada de PetiÃ§Ã£o/i, label: "Juntada de Petição", severity: "low" },
   { pattern: /ExpediÃ§Ã£o de IntimaÃ§Ã£o/i, label: "Expedição de Intimação", severity: "medium" },
   { pattern: /expedi[cç][aã]o.*intima[cç][aã]o/i, label: "Expedição de Intimação", severity: "medium" },
   { pattern: /IntimaÃ§Ã£o/i, label: "Intimação", severity: "medium" },
@@ -80,6 +97,7 @@ const DECISION_KEYWORDS: { pattern: RegExp; label: string; severity: "high" | "m
   { pattern: /tr[aâ]nsito.*julgado/i, label: "Trânsito em Julgado", severity: "high" },
   { pattern: /cumprimento.*sent/i, label: "Cumprimento de Sentença", severity: "high" },
   { pattern: /arquivamento/i, label: "Arquivamento", severity: "medium" },
+  { pattern: /movimenta[cç][aã]o/i, label: "Movimentação Processual", severity: "low" },
 ];
 
 const ACTION_MAP: Record<string, string[]> = {
@@ -101,33 +119,63 @@ const ACTION_MAP: Record<string, string[]> = {
   "Decisão Interlocutória": ["Verificar teor da decisão", "Avaliar necessidade de recurso"],
   "Trânsito em Julgado": ["Verificar se houve condenação", "Iniciar cumprimento de sentença se favorável"],
   "Cumprimento de Sentença": ["Verificar valores e termos", "Tomar providências para cumprimento"],
+  "Juntada de Petição": ["Verificar teor da petição juntada no PJe", "Avaliar se necessita resposta"],
+  "Movimentação Processual": ["Acessar o PJe para verificar detalhes da movimentação", "Acompanhar andamento"],
 };
 
-export function extractLegalData(bodyText: string | null | undefined, summaryFull: string | null | undefined): LegalData {
-  const text = [bodyText, summaryFull].filter(Boolean).join("\n\n");
+export function extractLegalData(
+  bodyText: string | null | undefined,
+  summaryFull: string | null | undefined,
+  snippet?: string | null | undefined,
+  aiSummary?: string | null | undefined,
+): LegalData {
+  // Combine all available text sources
+  const text = [bodyText, snippet, summaryFull, aiSummary].filter(Boolean).join("\n\n");
   
-  // Extract parties
-  const poloAtivo = extractField(text, "Polo Ativo");
-  const poloPassivo = extractField(text, "Polo Passivo");
-  const classeJudicial = extractField(text, "Classe Judicial", "Classe judicial");
-  const orgao = extractField(text, "Órgão", "Orgão", "ÃrgÃ£o");
-  const assunto = extractField(text, "Assunto");
-  const dataAutuacao = extractField(text, "Data de Autuação", "Data de AutuaÃ§Ã£o");
+  // Extract from structured PJe format (body_text or snippet)
+  const rawText = [bodyText, snippet].filter(Boolean).join("\n\n");
+  
+  const poloAtivo = extractField(rawText, "Polo Ativo");
+  const poloPassivo = extractField(rawText, "Polo Passivo");
+  const classeJudicial = extractField(rawText, "Classe Judicial", "Classe judicial");
+  const orgao = extractField(rawText, "Órgão", "Orgão", "ÃrgÃ£o");
+  const assunto = extractField(rawText, "Assunto");
+  const dataAutuacao = extractField(rawText, "Data de Autuação", "Data de AutuaÃ§Ã£o");
 
-  // Also try to extract from summary_full which is clean text
-  const poloAtivoClean = poloAtivo || extractFromSummary(summaryFull, /(?:autor|polo ativo|agravante)[^:]*?(?:é|:)\s*([^,.]+)/i);
-  const poloPassivoClean = poloPassivo || extractFromSummary(summaryFull, /(?:réu|polo passivo|agravado)[^:]*?(?:é|:)\s*([^,.]+)/i);
-  const classeClean = classeJudicial || extractFromSummary(summaryFull, /(?:classificad[oa]|classe)[^:]*?(?:como|:)\s*([^,.]+)/i);
+  // Fallback: extract from clean summary text (AI-generated, no mojibake)
+  const cleanText = [summaryFull, aiSummary].filter(Boolean).join("\n\n");
+  
+  const poloAtivoFinal = poloAtivo || extractFromSummary(cleanText, [
+    /(?:polo ativo|autor|requerente|agravante|reclamante|exequente)\s*(?:é|:)\s*([^,.;\n]+)/i,
+    /(?:autor|requerente|agravante|reclamante|exequente)\s+(?:do processo\s+)?(?:é|:)?\s*([A-Z][A-Z\s]+(?:S\.?A\.?|LTDA|ME|EPP|EIRELI)?)/,
+    /partes envolvidas[^.]*?(?:autor|polo ativo|agravante|requerente)\s*(?:é|:)?\s*([^,.;\n]+)/i,
+  ]);
+  
+  const poloPassivoFinal = poloPassivo || extractFromSummary(cleanText, [
+    /(?:polo passivo|réu|requerido|agravado|reclamado|executado)\s*(?:é|:)\s*([^,.;\n]+)/i,
+    /(?:réu|requerido|agravado|reclamado|executado)\s+(?:é|:)?\s*([A-Z][A-Z\s]+(?:S\.?A\.?|LTDA|ME|EPP|EIRELI)?)/,
+    /partes envolvidas[^.]*?(?:réu|polo passivo|agravado|requerido)\s*(?:é|:)?\s*([^,.;\n]+)/i,
+  ]);
+  
+  const classeJudicialFinal = classeJudicial || extractFromSummary(cleanText, [
+    /(?:classificad[oa]|classe|tipo)\s*(?:como|judicial|:)\s*([^,.;\n]+)/i,
+    /(?:procedimento\s+\w+\s+\w+)/i,
+  ]);
+
+  const orgaoFinal = orgao || extractFromSummary(cleanText, [
+    /(?:vara|câmara|turma|juízo|órgão|tribunal)\s*(?:de|:)?\s*([^,.;\n]+)/i,
+    /(?:\d+[ªº]?\s*(?:Vara|Câmara|Turma)[^,.;\n]*)/i,
+  ]);
 
   // Extract movements: "DD/MM/YYYY HH:MM - Description"
   const movimentos: { date: string; description: string }[] = [];
-  const movRegex = /(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})\s*-\s*(.+?)(?=\s*(?:Caso|ATEN|Diário|\d{2}\/\d{2}\/\d{4}|$))/gi;
+  const movRegex = /(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})\s*-\s*(.+?)(?=\s*(?:Caso|ATEN|Diário|DiÃ¡rio|\d{2}\/\d{2}\/\d{4}|$))/gi;
   let match;
   while ((match = movRegex.exec(text)) !== null) {
     movimentos.push({ date: match[1].trim(), description: match[2].trim() });
   }
 
-  // Identify decision type
+  // Identify decision type from all text
   let decisionType: string | null = null;
   let whatWasDone: string | null = null;
   
@@ -142,14 +190,13 @@ export function extractLegalData(bodyText: string | null | undefined, summaryFul
     }
   }
 
-  // Determine what to do
   const whatToDo = decisionType ? (ACTION_MAP[decisionType] || ["Verificar detalhes no sistema processual"]) : [];
 
   return {
-    poloAtivo: poloAtivoClean,
-    poloPassivo: poloPassivoClean,
-    classeJudicial: classeClean,
-    orgao,
+    poloAtivo: poloAtivoFinal,
+    poloPassivo: poloPassivoFinal,
+    classeJudicial: classeJudicialFinal,
+    orgao: orgaoFinal,
     assunto,
     dataAutuacao,
     movimentos,
@@ -157,14 +204,4 @@ export function extractLegalData(bodyText: string | null | undefined, summaryFul
     whatWasDone,
     whatToDo,
   };
-}
-
-function extractFromSummary(summary: string | null | undefined, regex: RegExp): string | null {
-  if (!summary) return null;
-  const match = summary.match(regex);
-  if (match && match[1]) {
-    const val = match[1].trim();
-    if (val.length > 2 && val.length < 200) return val;
-  }
-  return null;
 }
