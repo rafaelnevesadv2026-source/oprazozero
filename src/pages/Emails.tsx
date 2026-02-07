@@ -16,6 +16,7 @@ import {
   Plus, Trash2, CheckCircle, Scale, User, AlertTriangle, ArrowRight,
   Clock, Info, Target, Sparkles
 } from "lucide-react";
+import logo from "@/assets/logo.png";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "@/hooks/use-toast";
@@ -258,9 +259,7 @@ const Emails = () => {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <Link to="/"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Mail className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <img src={logo} alt="O Prazo é Zero" className="h-10 w-auto" />
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground">Central de Emails</h1>
               <p className="text-sm text-muted-foreground">IA lê, classifica, estrutura e organiza tudo para você agir</p>

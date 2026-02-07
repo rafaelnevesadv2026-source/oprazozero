@@ -22,8 +22,9 @@ import { AuditButton } from "@/components/AuditButton";
 import { WeekSimulation } from "@/components/WeekSimulation";
 import { PowerSearch } from "@/components/PowerSearch";
 import { TaskDetailSheet } from "@/components/TaskDetailSheet";
-import { Target, LogOut, Mail, FolderOpen } from "lucide-react";
+import { LogOut, Mail, FolderOpen, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import logo from "@/assets/logo.png";
 
 const statsToFilter: Record<StatsFilter, FilterType> = {
   all: "all",
@@ -128,11 +129,9 @@ const Index = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Target className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <img src={logo} alt="O Prazo é Zero" className="h-10 w-auto" />
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">Prazo Zero</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">O Prazo é Zero</h1>
               <p className="text-sm text-muted-foreground">Nunca perca um prazo</p>
             </div>
           </div>
