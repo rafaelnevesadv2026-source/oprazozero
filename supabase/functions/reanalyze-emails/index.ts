@@ -206,26 +206,31 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const batchSize = Math.min(body.batchSize || 20, 50);
 
-    // Get ALL user emails, process those without good summary_full first, then others
-    const { data: emails, error: fetchError } = await supabase
+    // Prioritize emails without good summary_full
+    const { data: poorEmails } = await supabase
+      .from("gmail_emails")
+      .select("*")
+      .eq("user_id", user.id)
+      .or("summary_full.is.null,summary_full.eq.")
+      .order("received_at", { ascending: false })
+      .limit(batchSize);
+    
+    // If no poor emails, get recent ones to re-process
+    const emails = (poorEmails && poorEmails.length > 0) ? poorEmails : (await supabase
       .from("gmail_emails")
       .select("*")
       .eq("user_id", user.id)
       .order("received_at", { ascending: false })
-      .limit(batchSize);
+      .limit(batchSize)).data;
 
-    if (fetchError || !emails || emails.length === 0) {
+    if (!emails || emails.length === 0) {
       return new Response(
         JSON.stringify({ success: true, processed: 0, remaining: 0, message: "No emails to process" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Prioritize: emails without summary_full or with short ones
-    const needsProcessing = emails.filter(
-      (e: any) => !e.summary_full || e.summary_full.length < 200
-    );
-    const toProcess = needsProcessing.length > 0 ? needsProcessing : emails.slice(0, batchSize);
+    const toProcess = emails;
 
     let processed = 0;
     for (const email of toProcess) {
