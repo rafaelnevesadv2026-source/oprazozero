@@ -20,7 +20,57 @@ async function refreshAccessToken(refreshToken: string, clientId: string, client
   return await res.json();
 }
 
-async function classifyEmailWithAI(subject: string, snippet: string, sender: string, accountEmail: string = "") {
+function extractBodyFromParts(payload: any): string {
+  if (!payload) return "";
+  
+  // Direct body
+  if (payload.body?.data) {
+    try {
+      const decoded = atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+      return decoded;
+    } catch { /* ignore */ }
+  }
+  
+  // Multipart
+  if (payload.parts) {
+    // Prefer text/plain, then text/html
+    for (const part of payload.parts) {
+      if (part.mimeType === "text/plain" && part.body?.data) {
+        try {
+          return atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+        } catch { /* ignore */ }
+      }
+    }
+    for (const part of payload.parts) {
+      if (part.mimeType === "text/html" && part.body?.data) {
+        try {
+          const html = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+          // Strip HTML tags for text content
+          return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                     .replace(/<[^>]+>/g, ' ')
+                     .replace(/&nbsp;/g, ' ')
+                     .replace(/&amp;/g, '&')
+                     .replace(/&lt;/g, '<')
+                     .replace(/&gt;/g, '>')
+                     .replace(/&quot;/g, '"')
+                     .replace(/\s+/g, ' ')
+                     .trim();
+        } catch { /* ignore */ }
+      }
+    }
+    // Recurse into nested parts
+    for (const part of payload.parts) {
+      if (part.parts) {
+        const nested = extractBodyFromParts(part);
+        if (nested) return nested;
+      }
+    }
+  }
+  return "";
+}
+
+async function classifyEmailWithAI(subject: string, bodyText: string, sender: string, accountEmail: string = "") {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("LOVABLE_API_KEY not set, skipping AI classification");
@@ -87,7 +137,7 @@ Responda APENAS o JSON, sem markdown.`,
           },
           {
             role: "user",
-            content: `De: ${sender}\nAssunto: ${subject}\nConteúdo: ${snippet}`,
+            content: `De: ${sender}\nAssunto: ${subject}\nConteúdo completo do email:\n${bodyText.slice(0, 12000)}`,
           },
         ],
         temperature: 0.1,
@@ -210,7 +260,7 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
   for (const msg of emailsToProcess) {
     try {
       const msgRes = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       if (!msgRes.ok) continue;
@@ -223,9 +273,12 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
       const sender = getHeader("From");
       const dateStr = getHeader("Date");
       const snippet = msgData.snippet || "";
+      
+      // Extract full body text
+      const bodyText = extractBodyFromParts(msgData.payload) || snippet;
 
-      // Classify with AI
-      const classification = await classifyEmailWithAI(subject, snippet, sender, account.email);
+      // Classify with AI using full body
+      const classification = await classifyEmailWithAI(subject, bodyText, sender, account.email);
 
       // Insert email
       const { error: insertError } = await supabase.from("gmail_emails").insert({
@@ -234,6 +287,7 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
         subject,
         sender,
         snippet,
+        body_text: bodyText.slice(0, 50000),
         received_at: dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(),
         category: classification.category,
         ai_summary: classification.summary,
@@ -246,9 +300,9 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
         account_email: account.email,
         task_created: classification.should_create_task,
         domain: classification.domain || "pessoal",
-        requires_action: classification.requires_action || false,
-        requires_response: classification.requires_response || false,
-        is_informational: classification.is_informational || true,
+        requires_action: classification.requires_action === true,
+        requires_response: classification.requires_response === true,
+        is_informational: classification.is_informational === true,
       });
 
       if (insertError) {

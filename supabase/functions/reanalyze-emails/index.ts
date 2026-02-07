@@ -6,20 +6,88 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function analyzeEmailWithAI(subject: string, snippet: string, sender: string, accountEmail: string) {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    console.warn("LOVABLE_API_KEY not set");
-    return null;
+function extractBodyFromParts(payload: any): string {
+  if (!payload) return "";
+  if (payload.body?.data) {
+    try {
+      return atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+    } catch { /* ignore */ }
   }
+  if (payload.parts) {
+    for (const part of payload.parts) {
+      if (part.mimeType === "text/plain" && part.body?.data) {
+        try { return atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/')); } catch { /* ignore */ }
+      }
+    }
+    for (const part of payload.parts) {
+      if (part.mimeType === "text/html" && part.body?.data) {
+        try {
+          const html = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+          return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+        } catch { /* ignore */ }
+      }
+    }
+    for (const part of payload.parts) {
+      if (part.parts) { const n = extractBodyFromParts(part); if (n) return n; }
+    }
+  }
+  return "";
+}
+
+async function fetchFullBodyFromGmail(supabase: any, email: any): Promise<string> {
+  if (email.body_text && email.body_text.length > 100) return email.body_text;
+  
+  // Try to get access token from email_accounts
+  if (!email.account_id) return email.snippet || "";
+  
+  const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
+  const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
+  
+  const { data: account } = await supabase.from("email_accounts").select("*").eq("id", email.account_id).maybeSingle();
+  if (!account) return email.snippet || "";
+  
+  let accessToken = account.access_token;
+  if (new Date(account.expires_at) < new Date()) {
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ refresh_token: account.refresh_token, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, grant_type: "refresh_token" }),
+    });
+    const refreshed = await res.json();
+    if (refreshed.access_token) {
+      accessToken = refreshed.access_token;
+      await supabase.from("email_accounts").update({ access_token: refreshed.access_token, expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString() }).eq("id", account.id);
+    } else {
+      return email.snippet || "";
+    }
+  }
+  
+  try {
+    const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.gmail_id}?format=full`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!msgRes.ok) return email.snippet || "";
+    const msgData = await msgRes.json();
+    const bodyText = extractBodyFromParts(msgData.payload) || email.snippet || "";
+    
+    // Save body_text for future use
+    if (bodyText.length > 100) {
+      await supabase.from("gmail_emails").update({ body_text: bodyText.slice(0, 50000) }).eq("id", email.id);
+    }
+    return bodyText;
+  } catch {
+    return email.snippet || "";
+  }
+}
+
+async function analyzeEmailWithAI(subject: string, bodyText: string, sender: string, accountEmail: string) {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return null;
 
   const today = new Date().toISOString().split("T")[0];
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "google/gemini-2.5-flash",
       messages: [
@@ -27,57 +95,50 @@ async function analyzeEmailWithAI(subject: string, snippet: string, sender: stri
           role: "system",
           content: `Você é um assistente de análise profunda de emails para um escritório de advocacia e seguros no Brasil. Data de hoje: ${today}.
 
-REGRA DE OURO: Não simplifique, ORGANIZE. Jamais omita informações relevantes do email.
+REGRA DE OURO: Não simplifique, ORGANIZE. Jamais omita informações. Toda informação extraída deve ser 100% rastreável ao conteúdo original.
 
-Analise o email e retorne um JSON com:
+Analise o email COMPLETO e retorne um JSON com:
 
 - "domain": "juridico" | "pessoal" | "descarte"
-  - "juridico": processos, prazos judiciais, intimações, citações, audiências, petições, sinistros, apólices, regulações, contratos, notificações legais, cobranças jurídicas, tribunais, OAB, cartórios, seguradoras, SUSEP
-  - "pessoal": contas pessoais, boletos, pagamentos, compromissos, lembretes, finanças, compras, serviços
-  - "descarte": spam, promoções puras, newsletters sem ação, propagandas
-
 - "category": "pagamentos" | "boletos" | "prazos" | "processos" | "intimacoes" | "sinistros" | "contatos" | "promocoes" | "outros"
-
 - "summary": resumo em 1-2 frases
-
-- "summary_short": resumo em 1 linha no formato "📋 Tipo | Referência — ação — prazo"
-
+- "summary_short": resumo em 1 linha "📋 Tipo | Referência — ação — prazo"
 - "summary_medium": resumo em 4-8 linhas
-
-- "summary_full": ANÁLISE COMPLETA E DETALHADA (mínimo 15 linhas, até 50 linhas). DEVE CONTER:
-  1. IDENTIFICAÇÃO: Nome do remetente, empresa/instituição
-  2. DESTINATÁRIO: conta ${accountEmail}
-  3. CONTEXTO: Tema principal, natureza
-  4. CONTEÚDO INTEGRAL: TODAS as informações relevantes
-  5. PARTES ENVOLVIDAS: Todas as partes/pessoas/empresas e seus papéis
-  6. DADOS JURÍDICOS (se aplicável): Nº processo, vara, fórum, juiz, partes, tipo de ação
-  7. DADOS FINANCEIROS (se aplicável): Valores, tipo operação, referências, status
-  8. DOCUMENTOS/ANEXOS referenciados
-  9. PRAZOS E DATAS com significado
-  10. ANÁLISE DE RISCO
-  11. AÇÕES RECOMENDADAS numeradas
-  12. CONSEQUÊNCIAS DE INAÇÃO
+- "summary_full": ANÁLISE COMPLETA E EXAUSTIVA. MÍNIMO 30 LINHAS, ATÉ 50 LINHAS. TRANSCREVA TODO O CONTEÚDO RELEVANTE. DEVE CONTER:
+  1. IDENTIFICAÇÃO: Nome completo do remetente, cargo, empresa/instituição, email
+  2. DESTINATÁRIO: Para quem (conta: ${accountEmail})
+  3. CONTEXTO: Tema principal, natureza (jurídico, financeiro, comercial, informativo)
+  4. CONTEÚDO INTEGRAL: TRANSCREVA todas as informações do email - números, nomes, referências, protocolos, solicitações
+  5. PARTES ENVOLVIDAS: TODAS as partes/pessoas/empresas mencionadas e seus papéis
+  6. DADOS JURÍDICOS (se aplicável): Nº processo, vara, fórum, comarca, juiz/desembargador, partes (autor/réu), tipo de ação, determinação judicial, prazos legais
+  7. DADOS FINANCEIROS (se aplicável): TODOS os valores mencionados, tipo de operação, referências bancárias, status de pagamento, vencimentos
+  8. DOCUMENTOS SOLICITADOS/ANEXOS: Liste CADA documento mencionado ou solicitado
+  9. PRAZOS E DATAS: TODAS as datas com seu significado e consequência
+  10. NÚMEROS DE PROTOCOLO/REFERÊNCIA: Todos os números identificadores
+  11. ANÁLISE DE RISCO: Impacto detalhado de não agir
+  12. AÇÕES RECOMENDADAS: Lista numerada detalhada de próximos passos
+  13. CONSEQUÊNCIAS DE INAÇÃO: O que acontece se não agir
 
 - "deadline": data ISO se houver prazo, ou null
 - "value": valor monetário (número), ou null
 - "should_create_task": true se contém prazo, pagamento, boleto, intimação, audiência, ação necessária
-- "task_title": título da tarefa se should_create_task=true
+- "task_title": título da tarefa
 - "task_priority": "low" | "medium" | "high"
-- "requires_action": true se requer ação do usuário (pagamento, resposta obrigatória, prazo legal, decisão)
+- "requires_action": true se requer ação (pagamento, resposta obrigatória, prazo legal, decisão, envio de documentos)
 - "requires_response": true se exige resposta por email
-- "is_informational": true APENAS se é puramente informativo SEM nenhuma ação necessária (newsletters, avisos genéricos, confirmações automáticas)
+- "is_informational": true APENAS se é puramente informativo SEM nenhuma ação necessária
 
-IMPORTANTE sobre classificação:
-- Emails de pagamento/boleto/cobrança NÃO são informativos, são "requires_action: true"
-- Emails de prazo/intimação/audiência são "requires_action: true"
-- Emails pedindo resposta são "requires_response: true"
-- Apenas avisos genéricos, newsletters e confirmações automáticas são "is_informational: true"
+IMPORTANTE:
+- Emails de pagamento/boleto/cobrança → requires_action: true, is_informational: false
+- Emails de prazo/intimação/audiência → requires_action: true, is_informational: false
+- Emails pedindo documentos/resposta → requires_response: true, is_informational: false
+- APENAS avisos genéricos, newsletters, confirmações automáticas → is_informational: true
 
 Responda APENAS o JSON, sem markdown.`,
         },
         {
           role: "user",
-          content: `De: ${sender}\nAssunto: ${subject}\nConteúdo: ${snippet}`,
+          content: `De: ${sender}\nAssunto: ${subject}\nConteúdo completo do email:\n${bodyText.slice(0, 12000)}`,
         },
       ],
       temperature: 0.1,
@@ -92,7 +153,7 @@ Responda APENAS o JSON, sem markdown.`,
     return {
       domain: parsed.domain || "pessoal",
       category: parsed.category || "outros",
-      summary: parsed.summary || snippet,
+      summary: parsed.summary || "",
       summary_short: parsed.summary_short || "",
       summary_medium: parsed.summary_medium || "",
       summary_full: parsed.summary_full || "",
@@ -161,9 +222,14 @@ Deno.serve(async (req) => {
     for (const email of toProcess) {
       try {
         console.log(`Processing: ${email.subject?.slice(0, 60)}...`);
+        
+        // Fetch full body from Gmail if not stored
+        const bodyText = await fetchFullBodyFromGmail(supabase, email);
+        console.log(`Body text length: ${bodyText.length} chars`);
+        
         const result = await analyzeEmailWithAI(
           email.subject || "",
-          email.snippet || "",
+          bodyText,
           email.sender || "",
           email.account_email || ""
         );

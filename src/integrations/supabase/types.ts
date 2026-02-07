@@ -91,6 +91,7 @@ export type Database = {
           account_email: string | null
           account_id: string | null
           ai_summary: string | null
+          body_text: string | null
           category: string | null
           created_at: string
           domain: string
@@ -116,6 +117,7 @@ export type Database = {
           account_email?: string | null
           account_id?: string | null
           ai_summary?: string | null
+          body_text?: string | null
           category?: string | null
           created_at?: string
           domain?: string
@@ -141,6 +143,7 @@ export type Database = {
           account_email?: string | null
           account_id?: string | null
           ai_summary?: string | null
+          body_text?: string | null
           category?: string | null
           created_at?: string
           domain?: string
