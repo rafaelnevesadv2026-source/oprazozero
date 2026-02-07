@@ -85,17 +85,14 @@ async function analyzeEmailWithAI(subject: string, bodyText: string, sender: str
   if (!LOVABLE_API_KEY) return null;
 
   const today = new Date().toISOString().split("T")[0];
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        {
-          role: "system",
-          content: `Você é um assistente de análise profunda de emails para um escritório de advocacia e seguros no Brasil. Data de hoje: ${today}.
+  const requestBody = {
+    model: "google/gemini-2.5-flash",
+    messages: [
+      {
+        role: "system",
+        content: `Você é um assistente de análise profunda de emails para um escritório de advocacia e seguros no Brasil. Data de hoje: ${today}.
 
-REGRA DE OURO: Não simplifique, ORGANIZE. Jamais omita informações. Toda informação extraída deve ser 100% rastreável ao conteúdo original.
+REGRA DE OURO: Não simplifique, ORGANIZE. Jamais omita informações.
 
 Analise o email COMPLETO e retorne um JSON com:
 
@@ -104,76 +101,79 @@ Analise o email COMPLETO e retorne um JSON com:
 - "summary": resumo em 1-2 frases
 - "summary_short": resumo em 1 linha "📋 Tipo | Referência — ação — prazo"
 - "summary_medium": resumo em 4-8 linhas
-- "summary_full": ANÁLISE COMPLETA E EXAUSTIVA. MÍNIMO 30 LINHAS, ATÉ 50 LINHAS. TRANSCREVA TODO O CONTEÚDO RELEVANTE. DEVE CONTER:
-  1. IDENTIFICAÇÃO: Nome completo do remetente, cargo, empresa/instituição, email
-  2. DESTINATÁRIO: Para quem (conta: ${accountEmail})
-  3. CONTEXTO: Tema principal, natureza (jurídico, financeiro, comercial, informativo)
-  4. CONTEÚDO INTEGRAL: TRANSCREVA todas as informações do email - números, nomes, referências, protocolos, solicitações
-  5. PARTES ENVOLVIDAS: TODAS as partes/pessoas/empresas mencionadas e seus papéis
-  6. DADOS JURÍDICOS (se aplicável): Nº processo, vara, fórum, comarca, juiz/desembargador, partes (autor/réu), tipo de ação, determinação judicial, prazos legais
-  7. DADOS FINANCEIROS (se aplicável): TODOS os valores mencionados, tipo de operação, referências bancárias, status de pagamento, vencimentos
-  8. DOCUMENTOS SOLICITADOS/ANEXOS: Liste CADA documento mencionado ou solicitado
-  9. PRAZOS E DATAS: TODAS as datas com seu significado e consequência
-  10. NÚMEROS DE PROTOCOLO/REFERÊNCIA: Todos os números identificadores
-  11. ANÁLISE DE RISCO: Impacto detalhado de não agir
-  12. AÇÕES RECOMENDADAS: Lista numerada detalhada de próximos passos
-  13. CONSEQUÊNCIAS DE INAÇÃO: O que acontece se não agir
-
+- "summary_full": ANÁLISE COMPLETA (mínimo 15 linhas). DEVE CONTER: IDENTIFICAÇÃO, DESTINATÁRIO (${accountEmail}), CONTEXTO, CONTEÚDO INTEGRAL, PARTES ENVOLVIDAS, DADOS JURÍDICOS, DADOS FINANCEIROS, DOCUMENTOS, PRAZOS, ANÁLISE DE RISCO, AÇÕES RECOMENDADAS
 - "deadline": data ISO se houver prazo, ou null
 - "value": valor monetário (número), ou null
-- "should_create_task": true se contém prazo, pagamento, boleto, intimação, audiência, ação necessária
-- "task_title": título da tarefa
-- "task_priority": "low" | "medium" | "high"
-- "requires_action": true se requer ação (pagamento, resposta obrigatória, prazo legal, decisão, envio de documentos)
-- "requires_response": true se exige resposta por email
-- "is_informational": true APENAS se é puramente informativo SEM nenhuma ação necessária
+- "requires_action": true se requer ação
+- "requires_response": true se exige resposta
+- "is_informational": true APENAS se puramente informativo SEM ação
 
-IMPORTANTE:
-- Emails de pagamento/boleto/cobrança → requires_action: true, is_informational: false
-- Emails de prazo/intimação/audiência → requires_action: true, is_informational: false
-- Emails pedindo documentos/resposta → requires_response: true, is_informational: false
-- APENAS avisos genéricos, newsletters, confirmações automáticas → is_informational: true
+Responda APENAS o JSON válido, sem markdown, sem texto extra.`,
+      },
+      {
+        role: "user",
+        content: `De: ${sender}\nAssunto: ${subject}\nConteúdo:\n${bodyText.slice(0, 10000)}`,
+      },
+    ],
+    temperature: 0.1,
+  };
 
-Responda APENAS o JSON, sem markdown.`,
-        },
-        {
-          role: "user",
-          content: `De: ${sender}\nAssunto: ${subject}\nConteúdo completo do email:\n${bodyText.slice(0, 12000)}`,
-        },
-      ],
-      temperature: 0.1,
-    }),
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
   });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error(`AI gateway HTTP ${res.status}: ${errText.slice(0, 500)}`);
+    // Retry with smaller content
+    const retryRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...requestBody,
+        messages: [
+          requestBody.messages[0],
+          { role: "user", content: `De: ${sender}\nAssunto: ${subject}\nResumo: ${bodyText.slice(0, 2000)}` },
+        ],
+      }),
+    });
+    if (!retryRes.ok) {
+      console.error(`AI retry failed ${retryRes.status}`);
+      return null;
+    }
+    const retryData = await retryRes.json();
+    const retryContent = retryData.choices?.[0]?.message?.content || "";
+    const retryClean = retryContent.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
+    const retryMatch = retryClean.match(/\{[\s\S]*\}/);
+    if (retryMatch) {
+      try { return JSON.parse(retryMatch[0]); } catch { return null; }
+    }
+    return null;
+  }
 
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content || "";
-  console.log("AI raw response length:", content.length, "first 200 chars:", content.slice(0, 200));
-  
-  // Clean markdown code fences if present
+  console.log("AI raw response length:", content.length);
+
+  if (!content || content.length === 0) {
+    console.error("AI returned empty content. Full response:", JSON.stringify(data).slice(0, 500));
+    return null;
+  }
+
   const cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        domain: parsed.domain || "pessoal",
-        category: parsed.category || "outros",
-        summary: parsed.summary || "",
-        summary_short: parsed.summary_short || "",
-        summary_medium: parsed.summary_medium || "",
-        summary_full: parsed.summary_full || "",
-        deadline: parsed.deadline || null,
-        value: parsed.value || null,
-        requires_action: parsed.requires_action === true,
-        requires_response: parsed.requires_response === true,
-        is_informational: parsed.is_informational === true,
-      };
+      return JSON.parse(jsonMatch[0]);
     } catch (parseErr) {
       console.error("JSON parse error:", parseErr, "content:", content.slice(0, 500));
     }
   } else {
     console.error("No JSON found in AI response:", content.slice(0, 500));
   }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -286,7 +286,7 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id)
       .or("summary_full.is.null,summary_full.eq.");
 
-    const hasMore = (count || 0) > 0 || needsProcessing.length >= batchSize;
+    const hasMore = (count || 0) > 0;
 
     return new Response(
       JSON.stringify({ success: true, processed, remaining: count || 0, hasMore }),
