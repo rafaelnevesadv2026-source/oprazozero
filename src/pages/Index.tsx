@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTasks } from "@/hooks/useTasks";
@@ -6,8 +6,9 @@ import { useLabels } from "@/hooks/useLabels";
 import { useProcesses } from "@/hooks/useProcesses";
 import { useGmail } from "@/hooks/useGmail";
 import { getDeadlineStatus } from "@/lib/tasks";
-import { StatsCards } from "@/components/StatsCards";
+import { StatsCards, StatsFilter } from "@/components/StatsCards";
 import { TaskCard } from "@/components/TaskCard";
+import { TaskActionSheet } from "@/components/TaskActionSheet";
 import { AddTaskDialog } from "@/components/AddTaskDialog";
 import { TaskFilters, FilterType } from "@/components/TaskFilters";
 import { DeadlineRadar } from "@/components/DeadlineRadar";
@@ -22,6 +23,20 @@ import { PowerSearch } from "@/components/PowerSearch";
 import { Target, LogOut, Mail, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const statsToFilter: Record<StatsFilter, FilterType> = {
+  all: "all",
+  overdue: "overdue",
+  urgent: "pending",
+  completed: "completed",
+};
+
+const statsLabels: Record<StatsFilter, string> = {
+  all: "Todas as Tarefas",
+  overdue: "Tarefas Atrasadas",
+  urgent: "Tarefas Urgentes",
+  completed: "Tarefas Concluídas",
+};
+
 const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const { tasks, loading: tasksLoading, addTask, toggleComplete, deleteTask } = useTasks();
@@ -30,6 +45,7 @@ const Index = () => {
   const { emails } = useGmail();
   const [filter, setFilter] = useState<FilterType>("all");
   const [domain, setDomain] = useState<DomainFilter>("all");
+  const [statsFilter, setStatsFilter] = useState<StatsFilter | null>(null);
 
   const domainCounts = useMemo(() => {
     const pending = tasks.filter(t => t.status === "pending");
@@ -41,26 +57,47 @@ const Index = () => {
     };
   }, [tasks]);
 
-  const filteredTasks = useMemo(() => {
-    let result = [...tasks];
-    if (domain !== "all") result = result.filter((t) => t.domain === domain);
+  const domainTasks = useMemo(() => {
+    if (domain === "all") return tasks;
+    return tasks.filter(t => t.domain === domain);
+  }, [tasks, domain]);
 
+  const filteredTasks = useMemo(() => {
+    let result = [...domainTasks];
     switch (filter) {
       case "pending": result = result.filter((t) => t.status === "pending"); break;
       case "overdue": result = result.filter((t) => t.status === "pending" && getDeadlineStatus(t.deadline) === "overdue"); break;
       case "completed": result = result.filter((t) => t.status === "completed"); break;
     }
-
     result.sort((a, b) => {
       if (a.status === "completed" && b.status !== "completed") return 1;
       if (a.status !== "completed" && b.status === "completed") return -1;
       return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
     });
-
     return result;
-  }, [tasks, filter, domain]);
+  }, [domainTasks, filter]);
 
-  // Map emails for PowerSearch
+  // Tasks for the action sheet opened from stats cards
+  const statsSheetTasks = useMemo(() => {
+    if (!statsFilter) return [];
+    const base = domainTasks;
+    switch (statsFilter) {
+      case "all": return base;
+      case "overdue": return base.filter(t => t.status === "pending" && getDeadlineStatus(t.deadline) === "overdue");
+      case "urgent": return base.filter(t => t.status === "pending" && (getDeadlineStatus(t.deadline) === "urgent" || getDeadlineStatus(t.deadline) === "soon"));
+      case "completed": return base.filter(t => t.status === "completed");
+      default: return [];
+    }
+  }, [statsFilter, domainTasks]);
+
+  const handleStatsClick = (key: StatsFilter) => {
+    if (statsFilter === key) {
+      setStatsFilter(null); // toggle off
+    } else {
+      setStatsFilter(key);
+    }
+  };
+
   const emailsForSearch = useMemo(() =>
     emails.map((e: any) => ({
       id: e.id,
@@ -112,8 +149,25 @@ const Index = () => {
         {/* Domain Tabs */}
         <DomainTabs active={domain} onChange={setDomain} counts={domainCounts} />
 
-        {/* Stats */}
-        <StatsCards tasks={domain === "all" ? tasks : tasks.filter(t => t.domain === domain)} />
+        {/* Stats Cards - Clickable */}
+        <StatsCards
+          tasks={domainTasks}
+          activeFilter={statsFilter ?? undefined}
+          onFilterClick={handleStatsClick}
+        />
+
+        {/* Action Sheet from Stats Click */}
+        {statsFilter && (
+          <div className="mt-4">
+            <TaskActionSheet
+              tasks={statsSheetTasks}
+              title={statsLabels[statsFilter]}
+              onToggle={toggleComplete}
+              onDelete={deleteTask}
+              onClose={() => setStatsFilter(null)}
+            />
+          </div>
+        )}
 
         {/* Radar + Daily Panel */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
