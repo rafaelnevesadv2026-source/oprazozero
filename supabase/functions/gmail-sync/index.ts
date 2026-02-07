@@ -109,12 +109,12 @@ Responda APENAS o JSON, sem markdown.`,
         summary_full: parsed.summary_full || "",
         deadline: parsed.deadline || null,
         value: parsed.value || null,
-        should_create_task: parsed.should_create_task || false,
+        should_create_task: parsed.should_create_task === true,
         task_title: parsed.task_title || null,
         task_priority: parsed.task_priority || "medium",
-        requires_action: parsed.requires_action || false,
-        requires_response: parsed.requires_response || false,
-        is_informational: parsed.is_informational || true,
+        requires_action: parsed.requires_action === true,
+        requires_response: parsed.requires_response === true,
+        is_informational: parsed.is_informational === true,
       };
     }
   } catch (err) {
