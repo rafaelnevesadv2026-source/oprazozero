@@ -167,7 +167,7 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
   const domainInfo = domainConfig[email.domain] || domainConfig.pessoal;
   const DomainIcon = domainInfo.icon;
 
-  const fullText = [email.ai_summary, email.summary_full, email.snippet].filter(Boolean).join(" ");
+  const fullText = [email.body_text, email.ai_summary, email.summary_full, email.snippet].filter(Boolean).join(" ");
   const processNumber = extractProcessNumber(fullText);
   const values = extractValues(fullText);
   const dates = extractDates(fullText);
@@ -536,7 +536,7 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
                   <div>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Corpo do Email</p>
                     <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
-                      {email.snippet || "Conteúdo não disponível."}
+                      {email.body_text || email.snippet || "Conteúdo não disponível. Clique em 'Re-analisar com IA' para buscar o conteúdo completo."}
                     </p>
                   </div>
                 </div>
@@ -547,7 +547,7 @@ export function EmailDetailSheet({ email, open, onOpenChange }: EmailDetailSheet
                   size="sm"
                   className="gap-1.5 text-xs"
                   onClick={() => {
-                    const text = `Assunto: ${email.subject}\nDe: ${email.sender}\nData: ${email.received_at}\n\n${email.snippet}`;
+                    const text = `Assunto: ${email.subject}\nDe: ${email.sender}\nData: ${email.received_at}\n\n${email.body_text || email.snippet}`;
                     navigator.clipboard.writeText(text);
                     toast({ title: "Copiado!", description: "Email copiado." });
                   }}

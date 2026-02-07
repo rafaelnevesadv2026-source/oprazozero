@@ -16,6 +16,7 @@ export interface GmailEmail {
   subject: string | null;
   sender: string | null;
   snippet: string | null;
+  body_text: string | null;
   received_at: string | null;
   category: string;
   ai_summary: string | null;
