@@ -71,17 +71,17 @@ function extractBodyFromParts(payload: any): string {
 }
 
 async function classifyEmailWithAI(subject: string, bodyText: string, sender: string, accountEmail: string = "") {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    console.warn("LOVABLE_API_KEY not set, skipping AI classification");
-    return { domain: "pessoal", category: "outros", summary: bodyText, summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  if (!OPENAI_API_KEY) {
+    console.warn("OPENAI_API_KEY not set, skipping AI classification");
+    return { domain: "pessoal", category: "outros", summary: bodyText.slice(0, 200), summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
   }
 
   try {
     const today = new Date().toISOString().split("T")[0];
     
     const requestBody = {
-      model: "google/gemini-2.5-flash",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -116,10 +116,10 @@ Responda APENAS o JSON válido, sem markdown, sem texto extra.`,
       temperature: 0.1,
     };
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
@@ -127,36 +127,7 @@ Responda APENAS o JSON válido, sem markdown, sem texto extra.`,
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error(`AI gateway HTTP ${res.status}: ${errText.slice(0, 500)}`);
-      // Retry once with smaller content
-      const retryRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...requestBody,
-          messages: [
-            requestBody.messages[0],
-            { role: "user", content: `De: ${sender}\nAssunto: ${subject}\nResumo: ${bodyText.slice(0, 2000)}` },
-          ],
-        }),
-      });
-      if (!retryRes.ok) {
-        const retryErr = await retryRes.text();
-        console.error(`AI retry also failed ${retryRes.status}: ${retryErr.slice(0, 300)}`);
-        return { domain: "pessoal", category: "outros", summary: bodyText.slice(0, 200), summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
-      }
-      const retryData = await retryRes.json();
-      const retryContent = retryData.choices?.[0]?.message?.content || "";
-      console.log("AI retry response length:", retryContent.length);
-      const retryClean = retryContent.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
-      const retryMatch = retryClean.match(/\{[\s\S]*\}/);
-      if (retryMatch) {
-        const parsed = JSON.parse(retryMatch[0]);
-        return { domain: parsed.domain || "pessoal", category: parsed.category || "outros", summary: parsed.summary || bodyText.slice(0, 200), summary_short: parsed.summary_short || "", summary_medium: parsed.summary_medium || "", summary_full: parsed.summary_full || "", deadline: parsed.deadline || null, value: parsed.value || null, should_create_task: parsed.should_create_task === true, task_title: parsed.task_title || null, task_priority: parsed.task_priority || "medium", requires_action: parsed.requires_action === true, requires_response: parsed.requires_response === true, is_informational: parsed.is_informational === true };
-      }
+      console.error(`OpenAI HTTP ${res.status}: ${errText.slice(0, 500)}`);
       return { domain: "pessoal", category: "outros", summary: bodyText.slice(0, 200), summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
     }
 
@@ -169,7 +140,6 @@ Responda APENAS o JSON válido, sem markdown, sem texto extra.`,
       return { domain: "pessoal", category: "outros", summary: bodyText.slice(0, 200), summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
     }
 
-    // Clean markdown code fences if present
     const cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {

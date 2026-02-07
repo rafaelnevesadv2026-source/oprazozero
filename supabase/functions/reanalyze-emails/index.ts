@@ -81,12 +81,12 @@ async function fetchFullBodyFromGmail(supabase: any, email: any): Promise<string
 }
 
 async function analyzeEmailWithAI(subject: string, bodyText: string, sender: string, accountEmail: string) {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) return null;
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  if (!OPENAI_API_KEY) return null;
 
   const today = new Date().toISOString().split("T")[0];
   const requestBody = {
-    model: "google/gemini-2.5-flash",
+    model: "gpt-4o-mini",
     messages: [
       {
         role: "system",
@@ -118,38 +118,15 @@ Responda APENAS o JSON válido, sem markdown, sem texto extra.`,
     temperature: 0.1,
   };
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify(requestBody),
   });
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error(`AI gateway HTTP ${res.status}: ${errText.slice(0, 500)}`);
-    // Retry with smaller content
-    const retryRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...requestBody,
-        messages: [
-          requestBody.messages[0],
-          { role: "user", content: `De: ${sender}\nAssunto: ${subject}\nResumo: ${bodyText.slice(0, 2000)}` },
-        ],
-      }),
-    });
-    if (!retryRes.ok) {
-      console.error(`AI retry failed ${retryRes.status}`);
-      return null;
-    }
-    const retryData = await retryRes.json();
-    const retryContent = retryData.choices?.[0]?.message?.content || "";
-    const retryClean = retryContent.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
-    const retryMatch = retryClean.match(/\{[\s\S]*\}/);
-    if (retryMatch) {
-      try { return JSON.parse(retryMatch[0]); } catch { return null; }
-    }
+    console.error(`OpenAI HTTP ${res.status}: ${errText.slice(0, 500)}`);
     return null;
   }
 
