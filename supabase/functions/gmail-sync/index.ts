@@ -74,7 +74,7 @@ async function classifyEmailWithAI(subject: string, bodyText: string, sender: st
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("LOVABLE_API_KEY not set, skipping AI classification");
-    return { domain: "pessoal", category: "outros", summary: snippet, summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
+    return { domain: "pessoal", category: "outros", summary: bodyText, summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
   }
 
   try {
@@ -146,14 +146,17 @@ Responda APENAS o JSON, sem markdown.`,
 
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content || "";
+    console.log("AI response length:", content.length);
 
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    // Clean markdown code fences if present
+    const cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       return {
         domain: parsed.domain || "pessoal",
         category: parsed.category || "outros",
-        summary: parsed.summary || snippet,
+        summary: parsed.summary || bodyText.slice(0, 200),
         summary_short: parsed.summary_short || "",
         summary_medium: parsed.summary_medium || "",
         summary_full: parsed.summary_full || "",
@@ -166,12 +169,14 @@ Responda APENAS o JSON, sem markdown.`,
         requires_response: parsed.requires_response === true,
         is_informational: parsed.is_informational === true,
       };
+    } else {
+      console.error("No JSON in AI response:", content.slice(0, 300));
     }
   } catch (err) {
     console.error("AI classification error:", err);
   }
 
-  return { domain: "pessoal", category: "outros", summary: snippet, summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
+  return { domain: "pessoal", category: "outros", summary: bodyText.slice(0, 200), summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
 }
 
 async function syncAccount(supabase: any, account: any, userId: string, clientId: string, clientSecret: string) {
