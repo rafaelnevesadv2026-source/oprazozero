@@ -17,6 +17,7 @@ import { toast } from "@/hooks/use-toast";
 import { useLabels } from "@/hooks/useLabels";
 import { useEmailLabels } from "@/hooks/useEmailLabels";
 import type { GmailEmail } from "@/hooks/useGmail";
+import { extractLegalData } from "@/lib/legalDataExtractor";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -178,6 +179,7 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail, onU
   const values = extractValues(fullText);
   const dates = extractDates(fullText);
   const documents = extractDocuments(fullText);
+  const legalData = isLegal ? extractLegalData(email.body_text, email.summary_full) : null;
 
   const timeline: { date: string; event: string; status: "done" | "pending" | "alert" }[] = [];
   if (email.received_at) {
@@ -540,6 +542,90 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail, onU
                   )}
                 </div>
                 <Separator />
+
+                {/* Partes Envolvidas */}
+                {legalData && (legalData.poloAtivo || legalData.poloPassivo) && (
+                  <>
+                    <div>
+                      <SectionHeader title="Partes Envolvidas" icon={Users} />
+                      <InfoRow icon={User} label="Polo Ativo (Autor)" value={legalData.poloAtivo} className="font-medium" copyable />
+                      <InfoRow icon={User} label="Polo Passivo (Réu)" value={legalData.poloPassivo} className="font-medium" copyable />
+                      {legalData.classeJudicial && (
+                        <InfoRow icon={Gavel} label="Classe Judicial" value={legalData.classeJudicial} />
+                      )}
+                      {legalData.orgao && (
+                        <InfoRow icon={Building2} label="Órgão / Vara" value={legalData.orgao} />
+                      )}
+                      {legalData.assunto && (
+                        <InfoRow icon={FileText} label="Assunto" value={legalData.assunto} />
+                      )}
+                    </div>
+                    <Separator />
+                  </>
+                )}
+
+                {/* Decisão / Movimentação */}
+                {legalData?.decisionType && (
+                  <>
+                    <div>
+                      <SectionHeader title="Decisão / Movimentação" icon={Gavel} />
+                      <div className={cn(
+                        "flex items-center gap-2 mt-1 p-2.5 rounded-lg border",
+                        legalData.decisionType.includes("Concedida") || legalData.decisionType === "Sentença Proferida"
+                          ? "bg-urgent/10 border-urgent/20"
+                          : legalData.decisionType.includes("Mero Expediente")
+                            ? "bg-muted border-border"
+                            : "bg-warning/10 border-warning/20"
+                      )}>
+                        <Gavel className={cn("h-4 w-4 shrink-0",
+                          legalData.decisionType.includes("Concedida") || legalData.decisionType === "Sentença Proferida"
+                            ? "text-urgent"
+                            : legalData.decisionType.includes("Mero Expediente")
+                              ? "text-muted-foreground"
+                              : "text-warning"
+                        )} />
+                        <div>
+                          <p className="text-sm font-bold text-foreground">{legalData.decisionType}</p>
+                          {legalData.whatWasDone && legalData.whatWasDone !== legalData.decisionType && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{legalData.whatWasDone}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Movimentos */}
+                      {legalData.movimentos.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {legalData.movimentos.map((mov, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              <Clock className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+                              <span className="text-muted-foreground">{mov.date}</span>
+                              <span className="text-foreground">{mov.description}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <Separator />
+                  </>
+                )}
+
+                {/* O que fazer */}
+                {legalData && legalData.whatToDo.length > 0 && (
+                  <>
+                    <div>
+                      <SectionHeader title="O que você precisa fazer" icon={Zap} />
+                      <div className="mt-1 space-y-1.5">
+                        {legalData.whatToDo.map((action, i) => (
+                          <div key={i} className="flex items-start gap-2 py-1">
+                            <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                            <p className="text-sm text-foreground">{action}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <Separator />
+                  </>
+                )}
               </>
             )}
 
