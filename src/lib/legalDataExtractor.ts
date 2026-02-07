@@ -13,48 +13,53 @@ export interface LegalData {
   whatToDo: string[];
 }
 
-// Normalize encoding issues (Ã§ -> ç, etc)
-function normalize(text: string): string {
-  return text
-    .replace(/Ã§/g, "ç").replace(/Ã£/g, "ã").replace(/Ã©/g, "é")
-    .replace(/Ã­/g, "í").replace(/Ãª/g, "ê").replace(/Ã³/g, "ó")
-    .replace(/Ãº/g, "ú").replace(/Ã¡/g, "á").replace(/Ã/g, "Á")
-    .replace(/Ã‰/g, "É").replace(/Ã"/g, "Ó").replace(/Ãš/g, "Ú")
-    .replace(/Ã‰/g, "É").replace(/Â/g, "").replace(/Ã¢/g, "â")
-    .replace(/Ãµ/g, "õ").replace(/Ã¼/g, "ü").replace(/Ã¤/g, "ä");
-}
-
-function extractField(text: string, label: string): string | null {
-  // Match "Label: value" until the next known label or newline
-  const regex = new RegExp(`${label}:\\s*(.+?)(?=\\s*(?:Polo|Classe|Órgão|Orgão|Data de|Assunto|Data -|Caso não|ATENÇÃO|$))`, "is");
-  const match = text.match(regex);
-  return match ? match[1].trim() : null;
+// Extract field by trying multiple label variants (handles mojibake)
+function extractField(text: string, ...labels: string[]): string | null {
+  for (const label of labels) {
+    // Match label: value until next known field or end of line
+    const regex = new RegExp(label + ":\\s*(.+?)(?=\\s*(?:Polo |Classe |Data de |Data - |Caso n|ATEN|Ãrg|Órg|Orgão|$))", "i");
+    const match = text.match(regex);
+    if (match && match[1].trim()) return match[1].trim();
+  }
+  return null;
 }
 
 const DECISION_KEYWORDS: { pattern: RegExp; label: string; severity: "high" | "medium" | "low" }[] = [
-  { pattern: /sentença/i, label: "Sentença Proferida", severity: "high" },
+  { pattern: /sent[eê]n[cç]a/i, label: "Sentença Proferida", severity: "high" },
   { pattern: /tutela.*urg[eê]ncia.*concedida/i, label: "Tutela de Urgência Concedida", severity: "high" },
   { pattern: /tutela.*urg[eê]ncia.*indeferida/i, label: "Tutela de Urgência Indeferida", severity: "high" },
   { pattern: /tutela.*urg[eê]ncia/i, label: "Tutela de Urgência", severity: "high" },
   { pattern: /liminar.*concedida/i, label: "Liminar Concedida", severity: "high" },
   { pattern: /liminar.*indeferida/i, label: "Liminar Indeferida", severity: "high" },
   { pattern: /julgamento.*antecipado/i, label: "Julgamento Antecipado", severity: "high" },
-  { pattern: /acórdão/i, label: "Acórdão", severity: "high" },
-  { pattern: /decisão.*interlocut/i, label: "Decisão Interlocutória", severity: "high" },
-  { pattern: /expedição.*intimação/i, label: "Expedição de Intimação", severity: "medium" },
-  { pattern: /intimação/i, label: "Intimação", severity: "medium" },
-  { pattern: /citação/i, label: "Citação", severity: "medium" },
+  { pattern: /ac[oó]rd[aã]o/i, label: "Acórdão", severity: "high" },
+  { pattern: /decis[aã]o.*interlocut/i, label: "Decisão Interlocutória", severity: "high" },
+  { pattern: /expedi[cç][aã]o.*intima[cç][aã]o/i, label: "Expedição de Intimação", severity: "medium" },
+  { pattern: /intima[cç][aã]o/i, label: "Intimação", severity: "medium" },
+  { pattern: /cita[cç][aã]o/i, label: "Citação", severity: "medium" },
   { pattern: /despacho.*mero.*expediente/i, label: "Despacho de Mero Expediente", severity: "low" },
   { pattern: /despacho/i, label: "Despacho", severity: "medium" },
-  { pattern: /audiência.*designada/i, label: "Audiência Designada", severity: "high" },
-  { pattern: /audiência/i, label: "Audiência", severity: "high" },
+  { pattern: /audi[eê]ncia.*designada/i, label: "Audiência Designada", severity: "high" },
+  { pattern: /audi[eê]ncia/i, label: "Audiência", severity: "high" },
   { pattern: /mandado/i, label: "Mandado Expedido", severity: "medium" },
   { pattern: /penhora/i, label: "Penhora", severity: "high" },
   { pattern: /embargo/i, label: "Embargos", severity: "medium" },
   { pattern: /recurso/i, label: "Recurso", severity: "medium" },
-  { pattern: /trânsito.*julgado/i, label: "Trânsito em Julgado", severity: "high" },
-  { pattern: /cumprimento.*sentença/i, label: "Cumprimento de Sentença", severity: "high" },
+  { pattern: /tr[aâ]nsito.*julgado/i, label: "Trânsito em Julgado", severity: "high" },
+  { pattern: /cumprimento.*sent/i, label: "Cumprimento de Sentença", severity: "high" },
   { pattern: /arquivamento/i, label: "Arquivamento", severity: "medium" },
+];
+
+// Also handle mojibake variants
+const DECISION_KEYWORDS_MOJIBAKE: { pattern: RegExp; label: string }[] = [
+  { pattern: /Proferido despacho de mero expediente/i, label: "Despacho de Mero Expediente" },
+  { pattern: /ExpediÃ§Ã£o de IntimaÃ§Ã£o/i, label: "Expedição de Intimação" },
+  { pattern: /IntimaÃ§Ã£o/i, label: "Intimação" },
+  { pattern: /SentenÃ§a/i, label: "Sentença Proferida" },
+  { pattern: /CitaÃ§Ã£o/i, label: "Citação" },
+  { pattern: /AudiÃªncia/i, label: "Audiência" },
+  { pattern: /DecisÃ£o/i, label: "Decisão Interlocutória" },
+  { pattern: /AcÃ³rdÃ£o/i, label: "Acórdão" },
 ];
 
 const ACTION_MAP: Record<string, string[]> = {
@@ -79,40 +84,53 @@ const ACTION_MAP: Record<string, string[]> = {
 };
 
 export function extractLegalData(bodyText: string | null | undefined, summaryFull: string | null | undefined): LegalData {
-  const raw = normalize([bodyText, summaryFull].filter(Boolean).join("\n\n"));
+  const text = [bodyText, summaryFull].filter(Boolean).join("\n\n");
   
-  const poloAtivo = extractField(raw, "Polo Ativo");
-  const poloPassivo = extractField(raw, "Polo Passivo");
-  const classeJudicial = extractField(raw, "Classe Judicial");
-  const orgao = extractField(raw, "(?:Órgão|Orgão)");
-  const assunto = extractField(raw, "Assunto");
-  const dataAutuacao = extractField(raw, "Data de Autuação");
+  // Extract parties - these labels are ASCII so they work with any encoding
+  const poloAtivo = extractField(text, "Polo Ativo");
+  const poloPassivo = extractField(text, "Polo Passivo");
+  const classeJudicial = extractField(text, "Classe Judicial");
+  const orgao = extractField(text, "Órgão", "Orgão", "ÃrgÃ£o");
+  const assunto = extractField(text, "Assunto");
+  const dataAutuacao = extractField(text, "Data de Autuação", "Data de AutuaÃ§Ã£o");
 
-  // Extract movements: "Date - Description"
+  // Extract movements: "DD/MM/YYYY HH:MM - Description"
   const movimentos: { date: string; description: string }[] = [];
-  const movRegex = /(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})\s*-\s*(.+?)(?=\s*(?:Caso não|ATENÇÃO|$|\d{2}\/\d{2}\/\d{4}))/gi;
+  const movRegex = /(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})\s*-\s*(.+?)(?=\s*Caso|ATEN|\d{2}\/\d{2}\/\d{4}|$)/gi;
   let match;
-  while ((match = movRegex.exec(raw)) !== null) {
+  while ((match = movRegex.exec(text)) !== null) {
     movimentos.push({ date: match[1].trim(), description: match[2].trim() });
   }
 
-  // Identify decision type from movements and full text
+  // Identify decision type
   let decisionType: string | null = null;
   let whatWasDone: string | null = null;
   
-  const searchText = movimentos.map(m => m.description).join(" ") + " " + raw;
+  const searchText = movimentos.map(m => m.description).join(" ") + " " + text;
   
-  for (const kw of DECISION_KEYWORDS) {
+  // Try mojibake patterns first (more specific)
+  for (const kw of DECISION_KEYWORDS_MOJIBAKE) {
     if (kw.pattern.test(searchText)) {
       decisionType = kw.label;
-      // Use the movement description as "what was done"
       const relevantMov = movimentos.find(m => kw.pattern.test(m.description));
-      whatWasDone = relevantMov ? `${relevantMov.date} — ${relevantMov.description}` : decisionType;
+      whatWasDone = relevantMov ? `${relevantMov.date} — ${relevantMov.description}` : kw.label;
       break;
     }
   }
+  
+  // Fallback to clean patterns
+  if (!decisionType) {
+    for (const kw of DECISION_KEYWORDS) {
+      if (kw.pattern.test(searchText)) {
+        decisionType = kw.label;
+        const relevantMov = movimentos.find(m => kw.pattern.test(m.description));
+        whatWasDone = relevantMov ? `${relevantMov.date} — ${relevantMov.description}` : kw.label;
+        break;
+      }
+    }
+  }
 
-  // Determine what to do based on decision type
+  // Determine what to do
   const whatToDo = decisionType ? (ACTION_MAP[decisionType] || ["Verificar detalhes no sistema processual"]) : [];
 
   return {
