@@ -266,7 +266,7 @@ Deno.serve(async (req) => {
       .select("*")
       .or("summary_full.is.null,summary_full.eq.")
       .order("received_at", { ascending: false })
-      .limit(10);
+      .limit(3);
 
     if (unprocessed && unprocessed.length > 0) {
       console.log(`[auto-process] Classifying ${unprocessed.length} unprocessed emails...`);
