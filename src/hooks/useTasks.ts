@@ -26,6 +26,7 @@ export function useTasks() {
           deadline: t.deadline,
           priority: t.priority as TaskPriority,
           status: t.status as TaskStatus,
+          domain: (t.domain as any) || "pessoal",
           source: t.source || "manual",
           createdAt: t.created_at,
         }))
