@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTasks } from "@/hooks/useTasks";
 import { useLabels } from "@/hooks/useLabels";
@@ -13,7 +13,7 @@ import { DailyPanel } from "@/components/DailyPanel";
 import { SearchBar } from "@/components/SearchBar";
 import { LabelManager } from "@/components/LabelManager";
 import { TaskTimeline } from "@/components/TaskTimeline";
-import { Target, LogOut } from "lucide-react";
+import { Target, LogOut, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const Index = () => {
@@ -86,6 +86,11 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link to="/emails">
+              <Button variant="outline" size="icon" title="Emails">
+                <Mail className="h-4 w-4" />
+              </Button>
+            </Link>
             <AddTaskDialog onAdd={addTask} />
             <Button variant="ghost" size="icon" onClick={signOut} title="Sair">
               <LogOut className="h-4 w-4" />
