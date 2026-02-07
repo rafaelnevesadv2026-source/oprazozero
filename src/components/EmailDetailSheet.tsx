@@ -180,7 +180,7 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail, onU
   const values = extractValues(fullText);
   const dates = extractDates(fullText);
   const documents = extractDocuments(fullText);
-  const legalData = isLegal ? extractLegalData(email.body_text, email.summary_full) : null;
+  const legalData = isLegal ? extractLegalData(email.body_text, email.summary_full, email.snippet, email.ai_summary) : null;
 
   const timeline: { date: string; event: string; status: "done" | "pending" | "alert" }[] = [];
   if (email.received_at) {
