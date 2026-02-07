@@ -1,40 +1,79 @@
 import { useState, useMemo } from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import { useTasks } from "@/hooks/useTasks";
+import { useLabels } from "@/hooks/useLabels";
 import { getDeadlineStatus } from "@/lib/tasks";
 import { StatsCards } from "@/components/StatsCards";
 import { TaskCard } from "@/components/TaskCard";
 import { AddTaskDialog } from "@/components/AddTaskDialog";
 import { TaskFilters, FilterType } from "@/components/TaskFilters";
-import { Target } from "lucide-react";
+import { DeadlineRadar } from "@/components/DeadlineRadar";
+import { DailyPanel } from "@/components/DailyPanel";
+import { SearchBar } from "@/components/SearchBar";
+import { LabelManager } from "@/components/LabelManager";
+import { TaskTimeline } from "@/components/TaskTimeline";
+import { Target, LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
-  const { tasks, addTask, toggleComplete, deleteTask } = useTasks();
+  const { user, loading: authLoading, signOut } = useAuth();
+  const { tasks, loading: tasksLoading, addTask, toggleComplete, deleteTask } = useTasks();
+  const { labels, addLabel, deleteLabel } = useLabels();
   const [filter, setFilter] = useState<FilterType>("all");
+  const [search, setSearch] = useState("");
 
   const filteredTasks = useMemo(() => {
-    const sorted = [...tasks].sort((a, b) => {
+    let result = [...tasks];
+
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q)
+      );
+    }
+
+    // Status filter
+    switch (filter) {
+      case "pending":
+        result = result.filter((t) => t.status === "pending");
+        break;
+      case "overdue":
+        result = result.filter(
+          (t) => t.status === "pending" && getDeadlineStatus(t.deadline) === "overdue"
+        );
+        break;
+      case "completed":
+        result = result.filter((t) => t.status === "completed");
+        break;
+    }
+
+    // Sort: pending first by deadline, completed last
+    result.sort((a, b) => {
       if (a.status === "completed" && b.status !== "completed") return 1;
       if (a.status !== "completed" && b.status === "completed") return -1;
       return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
     });
 
-    switch (filter) {
-      case "pending":
-        return sorted.filter((t) => t.status === "pending");
-      case "overdue":
-        return sorted.filter(
-          (t) => t.status === "pending" && getDeadlineStatus(t.deadline) === "overdue"
-        );
-      case "completed":
-        return sorted.filter((t) => t.status === "completed");
-      default:
-        return sorted;
-    }
-  }, [tasks, filter]);
+    return result;
+  }, [tasks, filter, search]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Carregando...</div>
+      </div>
+    );
+  }
+
+  if (!user) return <Navigate to="/auth" replace />;
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-3xl px-4 py-8">
+      <div className="mx-auto max-w-4xl px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
@@ -42,52 +81,74 @@ const Index = () => {
               <Target className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                Prazo Zero
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Nunca perca um prazo
-              </p>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">Prazo Zero</h1>
+              <p className="text-sm text-muted-foreground">Nunca perca um prazo</p>
             </div>
           </div>
-          <AddTaskDialog onAdd={addTask} />
+          <div className="flex items-center gap-2">
+            <AddTaskDialog onAdd={addTask} />
+            <Button variant="ghost" size="icon" onClick={signOut} title="Sair">
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
         <StatsCards tasks={tasks} />
 
-        {/* Filters + Tasks */}
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-foreground">Tarefas</h2>
-            <TaskFilters active={filter} onChange={setFilter} />
-          </div>
+        {/* Radar + Daily Panel */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+          <DeadlineRadar tasks={tasks} />
+          <DailyPanel tasks={tasks} onToggle={toggleComplete} />
+        </div>
 
-          <div className="space-y-3">
-            {filteredTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
-                  <Target className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <p className="text-lg font-medium text-foreground mb-1">
-                  {filter === "all" ? "Nenhuma tarefa ainda" : "Nenhuma tarefa neste filtro"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {filter === "all"
-                    ? "Crie sua primeira tarefa para começar!"
-                    : "Tente outro filtro ou crie uma nova tarefa."}
-                </p>
+        {/* Sidebar widgets */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+          <div className="md:col-span-2">
+            {/* Search + Filters + Tasks */}
+            <div className="space-y-4">
+              <SearchBar value={search} onChange={setSearch} />
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-foreground">Tarefas</h2>
+                <TaskFilters active={filter} onChange={setFilter} />
               </div>
-            ) : (
-              filteredTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onToggle={toggleComplete}
-                  onDelete={deleteTask}
-                />
-              ))
-            )}
+              {tasksLoading ? (
+                <div className="text-center py-12 text-muted-foreground">Carregando tarefas...</div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredTasks.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
+                        <Target className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <p className="text-lg font-medium text-foreground mb-1">
+                        {filter === "all" && !search
+                          ? "Nenhuma tarefa ainda"
+                          : "Nenhuma tarefa encontrada"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {filter === "all" && !search
+                          ? "Crie sua primeira tarefa para começar!"
+                          : "Tente outro filtro ou busca."}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredTasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onToggle={toggleComplete}
+                        onDelete={deleteTask}
+                      />
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <LabelManager labels={labels} onAdd={addLabel} onDelete={deleteLabel} />
+            <TaskTimeline tasks={tasks} />
           </div>
         </div>
       </div>
