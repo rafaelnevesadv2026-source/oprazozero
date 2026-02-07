@@ -50,13 +50,18 @@ function extractBodyFromParts(payload: any): string {
   return "";
 }
 
-async function classifyWithAI(subject: string, bodyText: string, sender: string, accountEmail: string, apiKey: string) {
+async function classifyWithAI(subject: string, bodyText: string, sender: string, accountEmail: string) {
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  if (!OPENAI_API_KEY) {
+    console.error("OPENAI_API_KEY not set");
+    return null;
+  }
   const today = new Date().toISOString().split("T")[0];
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -86,14 +91,14 @@ Responda APENAS o JSON, sem markdown.`,
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error(`AI HTTP ${res.status}: ${errText.slice(0, 300)}`);
+    console.error(`OpenAI HTTP ${res.status}: ${errText.slice(0, 300)}`);
     return null;
   }
 
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content || "";
   if (!content) {
-    console.error("AI empty response:", JSON.stringify(data).slice(0, 300));
+    console.error("OpenAI empty response:", JSON.stringify(data).slice(0, 300));
     return null;
   }
 
@@ -114,7 +119,6 @@ Deno.serve(async (req) => {
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
   const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -205,7 +209,7 @@ Deno.serve(async (req) => {
             const bodyText = extractBodyFromParts(msgData.payload) || snippet;
 
             // Classify with AI
-            const ai = await classifyWithAI(subject, bodyText, sender, account.email, LOVABLE_API_KEY);
+            const ai = await classifyWithAI(subject, bodyText, sender, account.email);
 
             const { error: insertError } = await supabase.from("gmail_emails").insert({
               user_id: account.user_id,
@@ -272,8 +276,7 @@ Deno.serve(async (req) => {
           email.subject || "",
           bodyText,
           email.sender || "",
-          email.account_email || "",
-          LOVABLE_API_KEY
+          email.account_email || ""
         );
         if (ai) {
           await supabase.from("gmail_emails").update({
