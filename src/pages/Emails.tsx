@@ -43,8 +43,8 @@ function EmailCard({ email, onClick }: { email: GmailEmail; onClick: () => void 
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              {(email as any).domain === "juridico" && <Scale className="h-3.5 w-3.5 text-primary shrink-0" />}
-              {(email as any).domain === "pessoal" && <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+              {email.domain === "juridico" && <Scale className="h-3.5 w-3.5 text-primary shrink-0" />}
+              {email.domain === "pessoal" && <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
               <p className="font-medium text-foreground truncate">{email.subject || "(sem assunto)"}</p>
             </div>
             <p className="text-xs text-muted-foreground truncate">{email.sender}</p>
@@ -64,13 +64,13 @@ function EmailCard({ email, onClick }: { email: GmailEmail; onClick: () => void 
 
         {/* 3-level summary */}
         <EmailSummaryLevels
-          summaryShort={(email as any).summary_short || null}
-          summaryMedium={(email as any).summary_medium || null}
-          summaryFull={(email as any).summary_full || null}
+          summaryShort={email.summary_short}
+          summaryMedium={email.summary_medium}
+          summaryFull={email.summary_full}
           aiSummary={email.ai_summary}
-          requiresAction={(email as any).requires_action || false}
-          requiresResponse={(email as any).requires_response || false}
-          isInformational={(email as any).is_informational || false}
+          requiresAction={email.requires_action}
+          requiresResponse={email.requires_response}
+          isInformational={email.is_informational}
         />
 
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -116,7 +116,7 @@ function AccountCard({ account, onDisconnect }: { account: EmailAccount; onDisco
 const Emails = () => {
   const { user, loading: authLoading } = useAuth();
   const { connected, accounts, emails, loading, syncing, connectGmail, disconnectAccount, syncEmails } = useGmail();
-  const [selectedEmail, setSelectedEmail] = useState<any>(null);
+  const [selectedEmail, setSelectedEmail] = useState<GmailEmail | null>(null);
 
   if (authLoading || loading) {
     return (
