@@ -79,74 +79,95 @@ async function classifyEmailWithAI(subject: string, bodyText: string, sender: st
 
   try {
     const today = new Date().toISOString().split("T")[0];
+    
+    const requestBody = {
+      model: "google/gemini-2.5-flash",
+      messages: [
+        {
+          role: "system",
+          content: `Você é um assistente de análise profunda de emails para um escritório de advocacia e seguros no Brasil. Data de hoje: ${today}.
+
+REGRA DE OURO: Não simplifique, ORGANIZE. Jamais omita informações.
+
+Analise o email e retorne um JSON com:
+
+- "domain": "juridico" | "pessoal" | "descarte"
+- "category": "pagamentos" | "boletos" | "prazos" | "processos" | "intimacoes" | "sinistros" | "contatos" | "promocoes" | "outros"
+- "summary": resumo em 1-2 frases
+- "summary_short": resumo em 1 linha "📋 Tipo | Referência — ação — prazo"
+- "summary_medium": resumo em 4-8 linhas
+- "summary_full": ANÁLISE COMPLETA (mínimo 15 linhas). DEVE CONTER: IDENTIFICAÇÃO, DESTINATÁRIO (${accountEmail}), CONTEXTO, CONTEÚDO INTEGRAL, PARTES ENVOLVIDAS, DADOS JURÍDICOS, DADOS FINANCEIROS, DOCUMENTOS, PRAZOS E DATAS, ANÁLISE DE RISCO, AÇÕES RECOMENDADAS, CONSEQUÊNCIAS DE INAÇÃO
+- "deadline": data ISO se houver prazo, ou null
+- "value": valor monetário (número), ou null
+- "should_create_task": true se contém prazo/pagamento/boleto/intimação/audiência
+- "task_title": título da tarefa se should_create_task=true
+- "task_priority": "low" | "medium" | "high"
+- "requires_action": true se requer ação
+- "requires_response": true se exige resposta
+- "is_informational": true se apenas informativo
+
+Responda APENAS o JSON válido, sem markdown, sem texto extra.`,
+        },
+        {
+          role: "user",
+          content: `De: ${sender}\nAssunto: ${subject}\nConteúdo:\n${bodyText.slice(0, 10000)}`,
+        },
+      ],
+      temperature: 0.1,
+    };
+
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `Você é um assistente de análise profunda de emails para um escritório de advocacia e seguros no Brasil. Data de hoje: ${today}.
-
-REGRA DE OURO: Não simplifique, ORGANIZE. Jamais omita informações. Toda informação extraída deve ser 100% rastreável ao conteúdo original.
-
-Analise o email e retorne um JSON com:
-
-- "domain": "juridico" | "pessoal" | "descarte"
-  - "juridico": processos, prazos judiciais, intimações, citações, audiências, petições, sinistros, apólices, regulações, contratos, notificações legais, cobranças jurídicas, tribunais, OAB, cartórios, seguradoras, SUSEP
-  - "pessoal": contas pessoais, boletos, pagamentos, compromissos, lembretes, finanças, compras, serviços
-  - "descarte": spam, promoções puras, newsletters sem ação, propagandas
-
-- "category": "pagamentos" | "boletos" | "prazos" | "processos" | "intimacoes" | "sinistros" | "contatos" | "promocoes" | "outros"
-
-- "summary": resumo legado em 1-2 frases
-
-- "summary_short": resumo em 1 linha no formato "📋 Tipo | Referência — ação — prazo"
-
-- "summary_medium": resumo em 4-8 linhas com: o que é, quem enviou, o que pede, qual prazo, qual risco, o que fazer
-
-- "summary_full": ANÁLISE COMPLETA E DETALHADA (mínimo 15 linhas, até 50 linhas). DEVE CONTER:
-  1. IDENTIFICAÇÃO: Nome do remetente, empresa/instituição
-  2. DESTINATÁRIO: Para quem (conta: ${accountEmail})
-  3. CONTEXTO: Tema principal, natureza (jurídico, financeiro, comercial, informativo)
-  4. CONTEÚDO INTEGRAL: TODAS as informações relevantes, números, nomes, referências
-  5. PARTES ENVOLVIDAS: Todas as partes/pessoas/empresas e seus papéis
-  6. DADOS JURÍDICOS (se aplicável): Nº processo, vara, fórum, juiz, partes, tipo de ação, determinação, prazos
-  7. DADOS FINANCEIROS (se aplicável): Valores, tipo operação, referências, status, vencimentos
-  8. DOCUMENTOS/ANEXOS referenciados
-  9. PRAZOS E DATAS: Todas as datas com significado
-  10. ANÁLISE DE RISCO: Impacto de não agir
-  11. AÇÕES RECOMENDADAS: Lista numerada de próximos passos
-  12. CONSEQUÊNCIAS DE INAÇÃO
-
-- "deadline": data ISO se houver prazo, ou null
-- "value": valor monetário (número), ou null
-- "should_create_task": true se contém prazo, pagamento, boleto, intimação, audiência, ação necessária
-- "task_title": título da tarefa se should_create_task=true
-- "task_priority": "low" | "medium" | "high"
-- "requires_action": true se requer ação
-- "requires_response": true se exige resposta
-- "is_informational": true se apenas informativo
-- "suggested_labels": array de strings com etiquetas sugeridas
-
-Responda APENAS o JSON, sem markdown.`,
-          },
-          {
-            role: "user",
-            content: `De: ${sender}\nAssunto: ${subject}\nConteúdo completo do email:\n${bodyText.slice(0, 12000)}`,
-          },
-        ],
-        temperature: 0.1,
-      }),
+      body: JSON.stringify(requestBody),
     });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`AI gateway HTTP ${res.status}: ${errText.slice(0, 500)}`);
+      // Retry once with smaller content
+      const retryRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...requestBody,
+          messages: [
+            requestBody.messages[0],
+            { role: "user", content: `De: ${sender}\nAssunto: ${subject}\nResumo: ${bodyText.slice(0, 2000)}` },
+          ],
+        }),
+      });
+      if (!retryRes.ok) {
+        const retryErr = await retryRes.text();
+        console.error(`AI retry also failed ${retryRes.status}: ${retryErr.slice(0, 300)}`);
+        return { domain: "pessoal", category: "outros", summary: bodyText.slice(0, 200), summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
+      }
+      const retryData = await retryRes.json();
+      const retryContent = retryData.choices?.[0]?.message?.content || "";
+      console.log("AI retry response length:", retryContent.length);
+      const retryClean = retryContent.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
+      const retryMatch = retryClean.match(/\{[\s\S]*\}/);
+      if (retryMatch) {
+        const parsed = JSON.parse(retryMatch[0]);
+        return { domain: parsed.domain || "pessoal", category: parsed.category || "outros", summary: parsed.summary || bodyText.slice(0, 200), summary_short: parsed.summary_short || "", summary_medium: parsed.summary_medium || "", summary_full: parsed.summary_full || "", deadline: parsed.deadline || null, value: parsed.value || null, should_create_task: parsed.should_create_task === true, task_title: parsed.task_title || null, task_priority: parsed.task_priority || "medium", requires_action: parsed.requires_action === true, requires_response: parsed.requires_response === true, is_informational: parsed.is_informational === true };
+      }
+      return { domain: "pessoal", category: "outros", summary: bodyText.slice(0, 200), summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
+    }
 
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content || "";
     console.log("AI response length:", content.length);
+
+    if (!content || content.length === 0) {
+      console.error("AI returned empty content. Full response:", JSON.stringify(data).slice(0, 500));
+      return { domain: "pessoal", category: "outros", summary: bodyText.slice(0, 200), summary_short: "", summary_medium: "", summary_full: "", deadline: null, value: null, should_create_task: false, task_title: null, task_priority: "medium", requires_action: false, requires_response: false, is_informational: true };
+    }
 
     // Clean markdown code fences if present
     const cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');

@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.reanalyze-emails]
 verify_jwt = false
+
+[functions.auto-process-emails]
+verify_jwt = false
