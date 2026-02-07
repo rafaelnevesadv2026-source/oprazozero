@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useGmail, GmailEmail, EmailAccount } from "@/hooks/useGmail";
@@ -5,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmailSummaryLevels } from "@/components/EmailSummaryLevels";
+import { EmailDetailSheet } from "@/components/EmailDetailSheet";
 import { ArrowLeft, Mail, RefreshCw, Link as LinkIcon, Calendar, DollarSign, Plus, Trash2, CheckCircle, Scale, User } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -33,10 +35,10 @@ const categoryLabels: Record<string, string> = {
   outros: "Outros",
 };
 
-function EmailCard({ email }: { email: GmailEmail }) {
+function EmailCard({ email, onClick }: { email: GmailEmail; onClick: () => void }) {
   const cat = email.category || "outros";
   return (
-    <Card className="border-border/50">
+    <Card className="border-border/50 cursor-pointer hover:border-primary/40 hover:shadow-md transition-all" onClick={onClick}>
       <CardContent className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
@@ -114,6 +116,7 @@ function AccountCard({ account, onDisconnect }: { account: EmailAccount; onDisco
 const Emails = () => {
   const { user, loading: authLoading } = useAuth();
   const { connected, accounts, emails, loading, syncing, connectGmail, disconnectAccount, syncEmails } = useGmail();
+  const [selectedEmail, setSelectedEmail] = useState<any>(null);
 
   if (authLoading || loading) {
     return (
@@ -195,11 +198,19 @@ const Emails = () => {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-3">
-                {emails.map((email) => (
-                  <EmailCard key={email.id} email={email} />
-                ))}
-              </div>
+              <>
+                <div className="space-y-3">
+                  {emails.map((email) => (
+                    <EmailCard key={email.id} email={email} onClick={() => setSelectedEmail(email)} />
+                  ))}
+                </div>
+
+                <EmailDetailSheet
+                  email={selectedEmail}
+                  open={!!selectedEmail}
+                  onOpenChange={(open) => { if (!open) setSelectedEmail(null); }}
+                />
+              </>
             )}
           </div>
         )}
