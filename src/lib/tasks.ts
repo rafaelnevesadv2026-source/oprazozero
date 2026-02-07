@@ -1,5 +1,6 @@
 export type TaskPriority = "low" | "medium" | "high";
 export type TaskStatus = "pending" | "completed";
+export type TaskDomain = "juridico" | "pessoal" | "descarte";
 
 export interface Task {
   id: string;
@@ -8,6 +9,7 @@ export interface Task {
   deadline: string; // ISO date string
   priority: TaskPriority;
   status: TaskStatus;
+  domain: TaskDomain;
   source?: string;
   createdAt: string;
 }

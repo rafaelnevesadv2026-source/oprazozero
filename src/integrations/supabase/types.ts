@@ -60,6 +60,7 @@ export type Database = {
           ai_summary: string | null
           category: string | null
           created_at: string
+          domain: string
           extracted_deadline: string | null
           extracted_value: number | null
           gmail_id: string
@@ -77,6 +78,7 @@ export type Database = {
           ai_summary?: string | null
           category?: string | null
           created_at?: string
+          domain?: string
           extracted_deadline?: string | null
           extracted_value?: number | null
           gmail_id: string
@@ -94,6 +96,7 @@ export type Database = {
           ai_summary?: string | null
           category?: string | null
           created_at?: string
+          domain?: string
           extracted_deadline?: string | null
           extracted_value?: number | null
           gmail_id?: string
@@ -231,6 +234,7 @@ export type Database = {
           created_at: string
           deadline: string
           description: string | null
+          domain: string
           id: string
           priority: string
           source: string | null
@@ -243,6 +247,7 @@ export type Database = {
           created_at?: string
           deadline: string
           description?: string | null
+          domain?: string
           id?: string
           priority?: string
           source?: string | null
@@ -255,6 +260,7 @@ export type Database = {
           created_at?: string
           deadline?: string
           description?: string | null
+          domain?: string
           id?: string
           priority?: string
           source?: string | null

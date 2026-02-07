@@ -13,6 +13,7 @@ import { DailyPanel } from "@/components/DailyPanel";
 import { SearchBar } from "@/components/SearchBar";
 import { LabelManager } from "@/components/LabelManager";
 import { TaskTimeline } from "@/components/TaskTimeline";
+import { DomainTabs, DomainFilter } from "@/components/DomainTabs";
 import { Target, LogOut, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -22,9 +23,25 @@ const Index = () => {
   const { labels, addLabel, deleteLabel } = useLabels();
   const [filter, setFilter] = useState<FilterType>("all");
   const [search, setSearch] = useState("");
+  const [domain, setDomain] = useState<DomainFilter>("all");
+
+  const domainCounts = useMemo(() => {
+    const pending = tasks.filter(t => t.status === "pending");
+    return {
+      all: pending.length,
+      juridico: pending.filter(t => t.domain === "juridico").length,
+      pessoal: pending.filter(t => t.domain === "pessoal").length,
+      descarte: pending.filter(t => t.domain === "descarte").length,
+    };
+  }, [tasks]);
 
   const filteredTasks = useMemo(() => {
     let result = [...tasks];
+
+    // Domain filter
+    if (domain !== "all") {
+      result = result.filter((t) => t.domain === domain);
+    }
 
     // Search filter
     if (search.trim()) {
@@ -59,7 +76,7 @@ const Index = () => {
     });
 
     return result;
-  }, [tasks, filter, search]);
+  }, [tasks, filter, search, domain]);
 
   if (authLoading) {
     return (
@@ -98,8 +115,11 @@ const Index = () => {
           </div>
         </div>
 
+        {/* Domain Tabs */}
+        <DomainTabs active={domain} onChange={setDomain} counts={domainCounts} />
+
         {/* Stats */}
-        <StatsCards tasks={tasks} />
+        <StatsCards tasks={domain === "all" ? tasks : tasks.filter(t => t.domain === domain)} />
 
         {/* Radar + Daily Panel */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
