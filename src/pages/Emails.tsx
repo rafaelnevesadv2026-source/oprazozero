@@ -14,12 +14,14 @@ import { cn } from "@/lib/utils";
 import {
   ArrowLeft, Mail, RefreshCw, Link as LinkIcon, Calendar, DollarSign,
   Plus, Trash2, CheckCircle, Scale, User, AlertTriangle, ArrowRight,
-  Clock, Info, Target, Sparkles
+  Clock, Info, Target, Sparkles, Archive, RotateCcw
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const categoryColors: Record<string, string> = {
   pagamentos: "bg-success/10 text-success border-success/20",
@@ -156,6 +158,7 @@ const Emails = () => {
   const [statusFilter, setStatusFilter] = useState<EmailStatusFilter>("all");
   const [reanalyzingAll, setReanalyzingAll] = useState(false);
   const [reanalyzeProgress, setReanalyzeProgress] = useState("");
+  const [viewTab, setViewTab] = useState<"active" | "finalized">("active");
 
   const handleReanalyzeAll = useCallback(async () => {
     if (!session) return;
@@ -195,36 +198,48 @@ const Emails = () => {
     }
   }, [session, refetch]);
 
-  // Compute filter counts
+  // Split emails into active and finalized
+  const activeEmails = useMemo(() => emails.filter(e => !e.status || e.status === "active"), [emails]);
+  const finalizedEmails = useMemo(() => emails.filter(e => e.status === "done" || e.status === "archived" || e.status === "deleted"), [emails]);
+
+  // Compute filter counts (from active only)
   const filterCounts = useMemo(() => ({
-    total: emails.length,
-    action: emails.filter(e => e.requires_action).length,
-    response: emails.filter(e => e.requires_response).length,
-    informational: emails.filter(e => e.is_informational && !e.requires_action && !e.requires_response).length,
-    juridico: emails.filter(e => e.domain === "juridico").length,
-    pessoal: emails.filter(e => e.domain === "pessoal").length,
-  }), [emails]);
+    total: activeEmails.length,
+    action: activeEmails.filter(e => e.requires_action).length,
+    response: activeEmails.filter(e => e.requires_response).length,
+    informational: activeEmails.filter(e => e.is_informational && !e.requires_action && !e.requires_response).length,
+    juridico: activeEmails.filter(e => e.domain === "juridico").length,
+    pessoal: activeEmails.filter(e => e.domain === "pessoal").length,
+  }), [activeEmails]);
 
   // Stats
   const stats = useMemo(() => ({
-    total: emails.length,
-    urgent: emails.filter(e => e.requires_action).length,
-    pending: emails.filter(e => e.requires_response).length,
-    withDeadline: emails.filter(e => e.extracted_deadline).length,
-    withValue: emails.filter(e => e.extracted_value).length,
-    taskCreated: emails.filter(e => e.task_created).length,
-  }), [emails]);
+    total: activeEmails.length,
+    urgent: activeEmails.filter(e => e.requires_action).length,
+    pending: activeEmails.filter(e => e.requires_response).length,
+    withDeadline: activeEmails.filter(e => e.extracted_deadline).length,
+    withValue: activeEmails.filter(e => e.extracted_value).length,
+    taskCreated: activeEmails.filter(e => e.task_created).length,
+  }), [activeEmails]);
 
-  // Apply filters
+  // Apply filters (on active emails)
   const filteredEmails = useMemo(() => {
-    let result = [...emails];
+    let result = [...activeEmails];
     if (domainFilter !== "all") result = result.filter(e => e.domain === domainFilter);
     if (categoryFilter !== "all") result = result.filter(e => e.category === categoryFilter);
     if (statusFilter === "action") result = result.filter(e => e.requires_action);
     if (statusFilter === "response") result = result.filter(e => e.requires_response);
     if (statusFilter === "informational") result = result.filter(e => e.is_informational && !e.requires_action && !e.requires_response);
     return result;
-  }, [emails, domainFilter, categoryFilter, statusFilter]);
+  }, [activeEmails, domainFilter, categoryFilter, statusFilter]);
+
+  const handleRestoreEmail = async (emailId: string) => {
+    const { error } = await supabase.from("gmail_emails").update({ status: "active" }).eq("id", emailId);
+    if (!error) {
+      toast({ title: "Email restaurado", description: "Movido de volta para a caixa ativa." });
+      refetch();
+    }
+  };
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -326,59 +341,127 @@ const Emails = () => {
             {/* Stats */}
             <EmailStatsBar {...stats} />
 
-            {/* Filters */}
-            <EmailFilters
-              category={categoryFilter}
-              domain={domainFilter}
-              status={statusFilter}
-              onCategoryChange={setCategoryFilter}
-              onDomainChange={setDomainFilter}
-              onStatusChange={setStatusFilter}
-              counts={filterCounts}
-            />
+            {/* Tabs: Active vs Finalized */}
+            <Tabs value={viewTab} onValueChange={(v) => setViewTab(v as "active" | "finalized")}>
+              <TabsList className="w-full justify-start bg-muted/50">
+                <TabsTrigger value="active" className="gap-2">
+                  <Mail className="h-3.5 w-3.5" />
+                  Ativos ({activeEmails.length})
+                </TabsTrigger>
+                <TabsTrigger value="finalized" className="gap-2">
+                  <Archive className="h-3.5 w-3.5" />
+                  Finalizados ({finalizedEmails.length})
+                </TabsTrigger>
+              </TabsList>
 
-            {/* Bulk actions bar */}
-            <EmailBulkBar
-              selectedCount={selectedIds.size}
-              totalCount={filteredEmails.length}
-              allSelected={selectedIds.size === filteredEmails.length && filteredEmails.length > 0}
-              onSelectAll={selectAll}
-              onDeselectAll={deselectAll}
-              onArchive={() => handleBulkAction("Arquivar")}
-              onDelete={() => handleBulkAction("Excluir")}
-              onMarkRead={() => handleBulkAction("Marcar como lido")}
-            />
+              <TabsContent value="active" className="space-y-4 mt-4">
+                {/* Filters */}
+                <EmailFilters
+                  category={categoryFilter}
+                  domain={domainFilter}
+                  status={statusFilter}
+                  onCategoryChange={setCategoryFilter}
+                  onDomainChange={setDomainFilter}
+                  onStatusChange={setStatusFilter}
+                  counts={filterCounts}
+                />
 
-            {/* Email list */}
-            <div className="space-y-2">
-              {filteredEmails.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Target className="h-8 w-8 text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">Nenhum email encontrado com os filtros atuais.</p>
+                {/* Bulk actions bar */}
+                <EmailBulkBar
+                  selectedCount={selectedIds.size}
+                  totalCount={filteredEmails.length}
+                  allSelected={selectedIds.size === filteredEmails.length && filteredEmails.length > 0}
+                  onSelectAll={selectAll}
+                  onDeselectAll={deselectAll}
+                  onArchive={() => handleBulkAction("Arquivar")}
+                  onDelete={() => handleBulkAction("Excluir")}
+                  onMarkRead={() => handleBulkAction("Marcar como lido")}
+                />
+
+                {/* Email list */}
+                <div className="space-y-2">
+                  {filteredEmails.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <Target className="h-8 w-8 text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground">Nenhum email encontrado com os filtros atuais.</p>
+                    </div>
+                  ) : (
+                    filteredEmails.map((email) => (
+                      <EmailListItem
+                        key={email.id}
+                        email={email}
+                        selected={selectedIds.has(email.id)}
+                        onSelect={() => toggleSelect(email.id)}
+                        onClick={() => setSelectedEmail(email)}
+                      />
+                    ))
+                  )}
                 </div>
-              ) : (
-                filteredEmails.map((email) => (
-                  <EmailListItem
-                    key={email.id}
-                    email={email}
-                    selected={selectedIds.has(email.id)}
-                    onSelect={() => toggleSelect(email.id)}
-                    onClick={() => setSelectedEmail(email)}
-                  />
-                ))
-              )}
-            </div>
 
-            <p className="text-xs text-muted-foreground text-center py-2">
-              Exibindo {filteredEmails.length} de {emails.length} email{emails.length !== 1 ? "s" : ""} analisado{emails.length !== 1 ? "s" : ""}
-            </p>
+                <p className="text-xs text-muted-foreground text-center py-2">
+                  Exibindo {filteredEmails.length} de {activeEmails.length} email{activeEmails.length !== 1 ? "s" : ""} ativo{activeEmails.length !== 1 ? "s" : ""}
+                </p>
+              </TabsContent>
+
+              <TabsContent value="finalized" className="space-y-2 mt-4">
+                {finalizedEmails.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <CheckCircle className="h-8 w-8 text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">Nenhum email finalizado ainda.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Emails concluídos, arquivados ou excluídos aparecerão aqui.</p>
+                  </div>
+                ) : (
+                  finalizedEmails.map((email) => (
+                    <div key={email.id} className="flex items-center gap-3 rounded-lg border bg-card/50 p-3 opacity-75 hover:opacity-100 transition-all">
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedEmail(email)}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0",
+                            email.status === "done" ? "bg-success/10 text-success border-success/30" :
+                            email.status === "archived" ? "bg-primary/10 text-primary border-primary/30" :
+                            "bg-destructive/10 text-destructive border-destructive/30"
+                          )}>
+                            {email.status === "done" ? "✅ Concluído" : email.status === "archived" ? "📦 Arquivado" : "🗑️ Excluído"}
+                          </Badge>
+                          <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0", categoryColors[email.category || "outros"])}>
+                            {categoryLabels[email.category || "outros"] || email.category}
+                          </Badge>
+                        </div>
+                        <p className="font-medium text-sm text-foreground truncate">{email.subject || "(sem assunto)"}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                          {email.summary_short || email.ai_summary || email.snippet || ""}
+                        </p>
+                        <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                          <span className="truncate max-w-[140px]">{email.sender}</span>
+                          {email.received_at && (
+                            <span>{format(new Date(email.received_at), "dd MMM, HH:mm", { locale: ptBR })}</span>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 text-[11px] h-8 text-muted-foreground hover:text-foreground shrink-0"
+                        onClick={() => handleRestoreEmail(email.id)}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Restaurar
+                      </Button>
+                    </div>
+                  ))
+                )}
+
+                <p className="text-xs text-muted-foreground text-center py-2">
+                  {finalizedEmails.length} email{finalizedEmails.length !== 1 ? "s" : ""} finalizado{finalizedEmails.length !== 1 ? "s" : ""}
+                </p>
+              </TabsContent>
+            </Tabs>
 
             {/* Detail Sheet */}
             <EmailDetailSheet
               email={selectedEmail}
               open={!!selectedEmail}
               onOpenChange={(open) => { if (!open) setSelectedEmail(null); }}
-              onDeleteEmail={(id) => { setSelectedEmail(null); }}
+              onDeleteEmail={(id) => { setSelectedEmail(null); refetch(); }}
             />
           </div>
         )}

@@ -32,6 +32,7 @@ export interface GmailEmail {
   requires_response: boolean;
   is_informational: boolean;
   process_id: string | null;
+  status: string;
 }
 
 const AUTO_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes

@@ -106,6 +106,7 @@ export type Database = {
           requires_response: boolean | null
           sender: string | null
           snippet: string | null
+          status: string
           subject: string | null
           summary_full: string | null
           summary_medium: string | null
@@ -132,6 +133,7 @@ export type Database = {
           requires_response?: boolean | null
           sender?: string | null
           snippet?: string | null
+          status?: string
           subject?: string | null
           summary_full?: string | null
           summary_medium?: string | null
@@ -158,6 +160,7 @@ export type Database = {
           requires_response?: boolean | null
           sender?: string | null
           snippet?: string | null
+          status?: string
           subject?: string | null
           summary_full?: string | null
           summary_medium?: string | null
