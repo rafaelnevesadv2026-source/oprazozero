@@ -18,6 +18,7 @@ import { useLabels } from "@/hooks/useLabels";
 import { useEmailLabels } from "@/hooks/useEmailLabels";
 import type { GmailEmail } from "@/hooks/useGmail";
 import { extractLegalData } from "@/lib/legalDataExtractor";
+import { ProcessSheet } from "./emails/ProcessSheet";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -408,6 +409,11 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail, onU
             <TabsTrigger value="data" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary text-xs px-4 py-2.5">
               Dados Extraídos
             </TabsTrigger>
+            {isLegal && (
+              <TabsTrigger value="process" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary text-xs px-4 py-2.5">
+                Ficha Processual
+              </TabsTrigger>
+            )}
             <TabsTrigger value="original" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary text-xs px-4 py-2.5">
               Email Original
             </TabsTrigger>
@@ -706,6 +712,17 @@ export function EmailDetailSheet({ email, open, onOpenChange, onDeleteEmail, onU
               </div>
             )}
           </TabsContent>
+
+          {/* CAMADA — FICHA PROCESSUAL */}
+          {isLegal && (
+            <TabsContent value="process" className="p-4 mt-0">
+              <ProcessSheet
+                processNumber={processNumber}
+                legalData={legalData}
+                processLinked={!!email.process_id}
+              />
+            </TabsContent>
+          )}
 
           {/* CAMADA 3 — EMAIL ORIGINAL */}
           <TabsContent value="original" className="p-4 space-y-4 mt-0">
