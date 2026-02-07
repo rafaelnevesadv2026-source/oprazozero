@@ -103,21 +103,29 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
     }
   }
 
-  // Fetch recent emails
-  console.log(`Fetching emails for ${account.email}...`);
-  const listRes = await fetch(
-    "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=30&q=newer_than:7d",
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
+  // Fetch ALL emails with pagination
+  console.log(`Fetching all emails for ${account.email}...`);
+  const allMessages: any[] = [];
+  let pageToken: string | null = null;
 
-  if (!listRes.ok) {
-    console.error(`Gmail list error for ${account.email}:`, listRes.status);
-    return { processed: 0, errors: 1 };
-  }
+  do {
+    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100${pageToken ? `&pageToken=${pageToken}` : ""}`;
+    const listRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 
-  const listData = await listRes.json();
-  const messages = listData.messages || [];
-  console.log(`Found ${messages.length} messages for ${account.email}`);
+    if (!listRes.ok) {
+      console.error(`Gmail list error for ${account.email}:`, listRes.status);
+      if (allMessages.length === 0) return { processed: 0, errors: 1 };
+      break;
+    }
+
+    const listData = await listRes.json();
+    const messages = listData.messages || [];
+    allMessages.push(...messages);
+    pageToken = listData.nextPageToken || null;
+    console.log(`Fetched ${allMessages.length} message IDs so far...`);
+  } while (pageToken);
+
+  console.log(`Total ${allMessages.length} messages found for ${account.email}`);
 
   // Get already imported email IDs
   const { data: existingEmails } = await supabase
@@ -126,11 +134,11 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
     .eq("user_id", userId);
   const existingIds = new Set((existingEmails || []).map((e: any) => e.gmail_id));
 
-  const newEmails = messages.filter((m: any) => !existingIds.has(m.id));
+  const newEmails = allMessages.filter((m: any) => !existingIds.has(m.id));
   console.log(`${newEmails.length} new emails to process for ${account.email}`);
 
   let processed = 0;
-  for (const msg of newEmails.slice(0, 15)) {
+  for (const msg of newEmails) {
     try {
       const msgRes = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
