@@ -1,10 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSmartAlerts, SmartAlert } from "@/hooks/useSmartAlerts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, RefreshCw, Activity, TrendingUp } from "lucide-react";
+import { AlertTriangle, RefreshCw, Activity, TrendingUp, Bell, BellOff } from "lucide-react";
+import { useNotifications } from "@/hooks/useNotifications";
 
 const levelStyles: Record<string, string> = {
   critical: "border-urgent/30 bg-urgent/5",
@@ -20,8 +21,26 @@ const levelBadge: Record<string, { label: string; className: string }> = {
 
 export function SmartAlertsPanel() {
   const { alerts, stats, loading, fetchAlerts } = useSmartAlerts();
+  const { requestPermission, notifyCriticalAlerts, isSupported, permission } = useNotifications();
+  const [notifEnabled, setNotifEnabled] = useState(permission === "granted");
 
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+
+  // Send push notifications for critical alerts
+  useEffect(() => {
+    if (notifEnabled && alerts.length > 0) {
+      notifyCriticalAlerts(alerts);
+    }
+  }, [alerts, notifEnabled, notifyCriticalAlerts]);
+
+  const handleToggleNotifications = async () => {
+    if (notifEnabled) {
+      setNotifEnabled(false);
+    } else {
+      const granted = await requestPermission();
+      setNotifEnabled(granted);
+    }
+  };
 
   const healthColor = stats ? (stats.health >= 85 ? "text-success" : stats.health >= 60 ? "text-warning" : "text-urgent") : "text-muted-foreground";
 
@@ -41,9 +60,26 @@ export function SmartAlertsPanel() {
                   </p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={fetchAlerts} disabled={loading}>
-                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-              </Button>
+              <div className="flex items-center gap-1">
+                {isSupported && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleToggleNotifications}
+                    title={notifEnabled ? "Desativar notificações" : "Ativar notificações"}
+                    className="h-8 w-8"
+                  >
+                    {notifEnabled ? (
+                      <Bell className="h-4 w-4 text-primary" />
+                    ) : (
+                      <BellOff className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                )}
+                <Button variant="ghost" size="icon" onClick={fetchAlerts} disabled={loading} className="h-8 w-8">
+                  <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                </Button>
+              </div>
             </div>
             {stats.financialRisk > 0 && (
               <div className="mt-3 p-2 rounded-md bg-warning/10 border border-warning/20">
