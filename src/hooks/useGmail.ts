@@ -23,6 +23,14 @@ export interface GmailEmail {
   extracted_value: number | null;
   task_created: boolean;
   account_email: string | null;
+  domain: string;
+  summary_short: string | null;
+  summary_medium: string | null;
+  summary_full: string | null;
+  requires_action: boolean;
+  requires_response: boolean;
+  is_informational: boolean;
+  process_id: string | null;
 }
 
 const AUTO_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
