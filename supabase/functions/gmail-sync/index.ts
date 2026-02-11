@@ -219,8 +219,8 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
   let pageToken: string | null = null;
 
   do {
-    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=500${pageToken ? `&pageToken=${pageToken}` : ""}`;
-    const listRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const url: string = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=500${pageToken ? `&pageToken=${pageToken}` : ""}`;
+    const listRes: Response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 
     if (!listRes.ok) {
       console.error(`Gmail list error for ${account.email}:`, listRes.status);
@@ -228,7 +228,7 @@ async function syncAccount(supabase: any, account: any, userId: string, clientId
       break;
     }
 
-    const listData = await listRes.json();
+    const listData: any = await listRes.json();
     const messages = listData.messages || [];
     allMessages.push(...messages);
     pageToken = listData.nextPageToken || null;
@@ -433,7 +433,7 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     console.error("Gmail sync error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
